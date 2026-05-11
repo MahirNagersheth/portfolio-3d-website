@@ -1,13 +1,14 @@
 // Simple offline-first service worker.
 // Caches the shell on install and serves cache-first for fast reloads,
 // falling back to network. Bump CACHE_VERSION when assets change.
-const CACHE_VERSION = 'mn-portfolio-v1';
+const CACHE_VERSION = 'mn-portfolio-v2';
 const SHELL = [
   './',
   './index.html',
   './styles.css',
   './main.js',
   './resume.pdf',
+  './avatar.png',
   './og-image.svg',
   './icon-192.svg',
   './icon-512.svg',
