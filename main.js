@@ -1475,30 +1475,28 @@ async function sendAskMessage() {
   askMessages?.appendChild(typing);
   if (askMessages) askMessages.scrollTop = askMessages.scrollHeight;
 
-  const apiKey = window.CLAUDE_API_KEY;
+  const apiKey = window.GEMINI_API_KEY;
   if (!apiKey) {
     typing.remove();
-    appendAskMsg('To enable AI responses, add a config.js file with window.CLAUDE_API_KEY set. Until then, reach Mahir directly at mnagersh@andrew.cmu.edu!', 'assistant');
+    appendAskMsg("AI responses aren't configured yet — reach Mahir directly at mnagersh@andrew.cmu.edu!", 'assistant');
     return;
   }
   try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-allow-browser': 'true',
-      },
-      body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001', max_tokens: 280,
-        system: PORTFOLIO_SYSTEM,
-        messages: [{ role: 'user', content: q }],
-      }),
-    });
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          system_instruction: { parts: [{ text: PORTFOLIO_SYSTEM }] },
+          contents: [{ role: 'user', parts: [{ text: q }] }],
+          generationConfig: { temperature: 0.7, maxOutputTokens: 280 },
+        }),
+      }
+    );
     const data = await res.json();
     typing.remove();
-    appendAskMsg(data.content?.[0]?.text || "Couldn't reach the AI right now.", 'assistant');
+    appendAskMsg(data.candidates?.[0]?.content?.parts?.[0]?.text || "Couldn't reach the AI right now.", 'assistant');
   } catch {
     typing.remove();
     appendAskMsg("Network error — try emailing Mahir at mnagersh@andrew.cmu.edu", 'assistant');
