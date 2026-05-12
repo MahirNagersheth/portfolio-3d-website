@@ -1386,6 +1386,18 @@ body[data-section="contact"] {
 }
 .series-tribute { border-top-color: rgba(180,160,200,0.2); }
 
+.sop-body {
+  display: grid;
+  gap: 1rem;
+  padding-top: 1rem;
+}
+.sop-body p {
+  color: var(--fg-dim);
+  font-size: 0.93rem;
+  line-height: 1.75;
+  margin: 0;
+}
+
 .writing-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
