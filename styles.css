@@ -1300,6 +1300,110 @@ body[data-section="contact"] {
 }
 
 /* WRITING (Pluto-style 8th planet — outer cards) */
+/* Masters Application Series */
+.series-block {
+  margin-bottom: 3rem;
+}
+.series-header {
+  margin-bottom: 1.5rem;
+}
+.series-eyebrow {
+  display: inline-block;
+  font-size: 0.72rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--accent-soft);
+  margin-bottom: 0.5rem;
+}
+.series-title {
+  font-family: var(--font-display);
+  font-size: 1.3rem;
+  font-weight: 600;
+  margin: 0 0 0.4rem;
+}
+.series-sub {
+  color: var(--fg-dim);
+  font-size: 0.92rem;
+  max-width: 680px;
+  margin: 0;
+}
+.series-parts {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.series-part {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, rgba(17,20,29,0.7), rgba(11,13,20,0.4));
+  overflow: hidden;
+  transition: border-color 0.25s;
+}
+.series-part[open] { border-color: rgba(196,30,58,0.35); }
+.series-part summary {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+.series-part summary::-webkit-details-marker { display: none; }
+.series-part summary::after {
+  content: '+';
+  margin-left: auto;
+  font-size: 1.1rem;
+  color: var(--fg-faint);
+  transition: transform 0.2s;
+  flex-shrink: 0;
+}
+.series-part[open] summary::after { content: '−'; }
+.part-label {
+  font-size: 0.7rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--fg-faint);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.part-title {
+  font-family: var(--font-display);
+  font-size: 0.97rem;
+  font-weight: 600;
+  color: var(--fg);
+}
+.part-body {
+  padding: 0 1.25rem 1.25rem;
+  border-top: 1px solid var(--line);
+}
+.part-body p {
+  color: var(--fg-dim);
+  font-size: 0.92rem;
+  line-height: 1.7;
+  margin: 0.85rem 0 0;
+}
+.part-list {
+  color: var(--fg-dim);
+  font-size: 0.92rem;
+  line-height: 1.7;
+  margin: 0.75rem 0 0 1.1rem;
+  display: grid;
+  gap: 0.3rem;
+}
+.part-closing {
+  font-style: italic;
+  color: var(--fg-dim) !important;
+  border-top: 1px solid var(--line);
+  margin-top: 1.25rem !important;
+  padding-top: 1rem;
+}
+.series-tribute {
+  border-color: rgba(255,255,255,0.1);
+  background: linear-gradient(180deg, rgba(20,15,25,0.8), rgba(11,10,16,0.6));
+}
+.series-tribute[open] { border-color: rgba(180,160,200,0.3); }
+
 .writing-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
