@@ -1261,7 +1261,7 @@ function spawnMeteor() {
   if (!slot) return;
   // Try many common filenames so you can drop your photo in as whatever
   // name feels natural — case-insensitive thanks to most filesystems.
-  const exts = ['jpg', 'jpeg', 'png', 'webp', 'JPG', 'JPEG', 'PNG'];
+  const exts = ['png', 'jpg', 'jpeg', 'webp', 'PNG', 'JPG', 'JPEG'];
   const names = ['avatar', 'profile', 'me', 'mahir', 'headshot', 'photo'];
   const candidates = [];
   for (const n of names) for (const e of exts) candidates.push(`${n}.${e}`);
