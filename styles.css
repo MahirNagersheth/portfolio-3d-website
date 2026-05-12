@@ -1301,43 +1301,36 @@ body[data-section="contact"] {
 
 /* WRITING (Pluto-style 8th planet — outer cards) */
 /* Masters Application Series */
-.series-block {
-  margin-bottom: 0;
+.series-card {
+  cursor: pointer;
 }
-.series-header {
-  margin-bottom: 1.25rem;
+.series-card[open] {
+  grid-column: 1 / -1;
+  cursor: default;
 }
-.series-eyebrow {
-  display: inline-block;
-  font-size: 0.72rem;
-  letter-spacing: 0.15em;
-  text-transform: uppercase;
-  color: var(--accent-soft);
-  margin-bottom: 0.5rem;
+.series-card > summary {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
 }
-.series-title {
-  font-family: var(--font-display);
-  font-size: 1.3rem;
-  font-weight: 600;
-  margin: 0 0 0.4rem;
-}
-.series-sub {
-  color: var(--fg-dim);
-  font-size: 0.92rem;
-  max-width: 680px;
-  margin: 0;
-}
+.series-card > summary::-webkit-details-marker { display: none; }
+.series-card > summary h3 { margin: 0.25rem 0 0.55rem; }
+.series-card > summary p  { flex: 1; }
+.series-card:not([open]):hover { border-color: var(--accent); transform: translateY(-4px); }
+.series-card[open] > summary { cursor: pointer; padding-bottom: 1rem; border-bottom: 1px solid var(--line); margin-bottom: 1rem; }
+
+.series-expanded { margin-top: 0; }
 .series-parts {
   display: flex;
   flex-direction: column;
-  gap: 0.6rem;
 }
 .series-part {
   border-top: 1px solid var(--line);
   overflow: hidden;
 }
 .series-part:first-child { border-top: none; }
-.series-part summary {
+.series-part > summary {
   display: flex;
   align-items: center;
   gap: 1rem;
@@ -1346,16 +1339,15 @@ body[data-section="contact"] {
   list-style: none;
   user-select: none;
 }
-.series-part summary::-webkit-details-marker { display: none; }
-.series-part summary::after {
+.series-part > summary::-webkit-details-marker { display: none; }
+.series-part > summary::after {
   content: '+';
   margin-left: auto;
   font-size: 1.1rem;
   color: var(--fg-faint);
-  transition: transform 0.2s;
   flex-shrink: 0;
 }
-.series-part[open] summary::after { content: '−'; }
+.series-part[open] > summary::after { content: '−'; }
 .part-label {
   font-size: 0.7rem;
   letter-spacing: 0.12em;
@@ -1370,9 +1362,7 @@ body[data-section="contact"] {
   font-weight: 600;
   color: var(--fg);
 }
-.part-body {
-  padding: 0 0 1rem;
-}
+.part-body { padding: 0 0 1rem; }
 .part-body p {
   color: var(--fg-dim);
   font-size: 0.92rem;
@@ -1394,9 +1384,7 @@ body[data-section="contact"] {
   margin-top: 1.25rem !important;
   padding-top: 1rem;
 }
-.series-tribute {
-  border-top-color: rgba(180,160,200,0.2);
-}
+.series-tribute { border-top-color: rgba(180,160,200,0.2); }
 
 .writing-grid {
   display: grid;
