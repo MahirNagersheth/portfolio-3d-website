@@ -1,6 +1,6 @@
 // Copy this file to config.js and fill in your real keys.
 // config.js is gitignored — never commit it.
-window.CLAUDE_API_KEY = 'sk-ant-...';   // optional: powers the "Ask Mahir" widget
+window.GROQ_API_KEY = 'gsk_...';   // optional: powers the "Ask Mahir" widget
 
 window.FIREBASE_CONFIG = {
   apiKey:            'AIza...',

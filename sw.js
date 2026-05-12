@@ -1,6 +1,6 @@
 // Network-first for HTML/JS (always get the latest code).
 // Cache-first for everything else (fonts, images, PDFs).
-const CACHE_VERSION = 'mn-portfolio-v4';
+const CACHE_VERSION = 'mn-portfolio-v5';
 const ALWAYS_FRESH = ['.html', '.js'];
 const STATIC_SHELL = [
   './styles.css',

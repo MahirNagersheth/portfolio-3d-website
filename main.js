@@ -1475,25 +1475,29 @@ async function sendAskMessage() {
   askMessages?.appendChild(typing);
   if (askMessages) askMessages.scrollTop = askMessages.scrollHeight;
 
-  const apiKey = window.GEMINI_API_KEY;
+  const apiKey = window.GROQ_API_KEY;
   if (!apiKey) {
     typing.remove();
     appendAskMsg("AI responses aren't configured yet — reach Mahir directly at mnagersh@andrew.cmu.edu!", 'assistant');
     return;
   }
   try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          system_instruction: { parts: [{ text: PORTFOLIO_SYSTEM }] },
-          contents: [{ role: 'user', parts: [{ text: q }] }],
-          generationConfig: { temperature: 0.7, maxOutputTokens: 280 },
-        }),
-      }
-    );
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'llama-3.1-8b-instant',
+        messages: [
+          { role: 'system', content: PORTFOLIO_SYSTEM },
+          { role: 'user', content: q },
+        ],
+        max_tokens: 280,
+        temperature: 0.7,
+      }),
+    });
     const data = await res.json();
     typing.remove();
     if (!res.ok) {
@@ -1501,7 +1505,7 @@ async function sendAskMessage() {
       appendAskMsg("Couldn't reach the AI right now — try emailing Mahir at mnagersh@andrew.cmu.edu", 'assistant');
       return;
     }
-    appendAskMsg(data.candidates?.[0]?.content?.parts?.[0]?.text || "Couldn't reach the AI right now.", 'assistant');
+    appendAskMsg(data.choices?.[0]?.message?.content || "Couldn't reach the AI right now.", 'assistant');
   } catch (err) {
     console.error('[Ask Mahir] fetch error:', err);
     typing.remove();
