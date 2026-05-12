@@ -1,12 +1,9 @@
-// Simple offline-first service worker.
-// Caches the shell on install and serves cache-first for fast reloads,
-// falling back to network. Bump CACHE_VERSION when assets change.
-const CACHE_VERSION = 'mn-portfolio-v3';
-const SHELL = [
-  './',
-  './index.html',
+// Network-first for HTML/JS (always get the latest code).
+// Cache-first for everything else (fonts, images, PDFs).
+const CACHE_VERSION = 'mn-portfolio-v4';
+const ALWAYS_FRESH = ['.html', '.js'];
+const STATIC_SHELL = [
   './styles.css',
-  './main.js',
   './resume.pdf',
   './avatar.png',
   './og-image.svg',
@@ -17,7 +14,7 @@ const SHELL = [
 
 self.addEventListener('install', (e) => {
   e.waitUntil(
-    caches.open(CACHE_VERSION).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting())
+    caches.open(CACHE_VERSION).then((c) => c.addAll(STATIC_SHELL)).then(() => self.skipWaiting())
   );
 });
 
@@ -30,17 +27,31 @@ self.addEventListener('activate', (e) => {
 });
 
 self.addEventListener('fetch', (e) => {
-  // Only handle same-origin GETs — leave the GitHub API + CDN alone.
   if (e.request.method !== 'GET' || new URL(e.request.url).origin !== location.origin) return;
-  e.respondWith(
-    caches.match(e.request).then((cached) =>
-      cached ||
+
+  const url = new URL(e.request.url);
+  const alwaysFresh = ALWAYS_FRESH.some((ext) => url.pathname.endsWith(ext)) || url.pathname === '/';
+
+  if (alwaysFresh) {
+    // Network-first: try network, fall back to cache if offline
+    e.respondWith(
       fetch(e.request).then((res) => {
-        // Populate cache lazily for new same-origin requests
         const copy = res.clone();
         caches.open(CACHE_VERSION).then((c) => c.put(e.request, copy)).catch(() => {});
         return res;
-      }).catch(() => cached)
-    )
-  );
+      }).catch(() => caches.match(e.request))
+    );
+  } else {
+    // Cache-first: serve from cache, populate lazily on miss
+    e.respondWith(
+      caches.match(e.request).then((cached) =>
+        cached ||
+        fetch(e.request).then((res) => {
+          const copy = res.clone();
+          caches.open(CACHE_VERSION).then((c) => c.put(e.request, copy)).catch(() => {});
+          return res;
+        })
+      )
+    );
+  }
 });
