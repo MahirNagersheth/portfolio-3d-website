@@ -1737,7 +1737,7 @@ function makeAsteroidGeo(radius, seed) {
 
 // ── Planet 9 definition ──────────────────────────────────────────
 const FRIENDS_DEF = {
-  id: 'friends', name: 'Friends', sub: '& Family',
+  id: 'friends', name: 'Friends & Family', sub: '',
   color: 0xffb347, emissive: 0x3d2200, orbit: 32.5, speed: 0.00052, size: 0.50,
   tilt: 0.16, startAngle: 0.85, inclination: { x: 0.10, z: -0.07 },
   texture: { style: 'rocky', base: '#3d2200', mid: '#d97c20', accent: '#ffe0a0', seed: 199 },
@@ -1841,41 +1841,6 @@ if (typeof OG_META !== 'undefined') {
 })();
 
 // ── Background asteroid belt (30 static gray rocks) ─────────────
-(function buildBackgroundBelt() {
-  const p = FP;
-  for (let i = 0; i < 30; i++) {
-    const seed = 3000 + i * 53;
-    let s = seed;
-    const rng = () => { s = (s * 9301 + 49297) % 233280; return s / 233280; };
-    const orbitR = 0.7 + rng() * 1.9;
-    const speed  = (0.005 + rng() * 0.018) * (i % 2 === 0 ? 1 : -1);
-    const size   = 0.016 + rng() * 0.028;
-    const tilt   = (rng() - 0.5) * 1.4;
-
-    const incl = new THREE.Group(); incl.rotation.x = tilt; p.group.add(incl);
-    const piv  = new THREE.Group(); piv.rotation.y = rng() * Math.PI * 2; incl.add(piv);
-
-    const gray = new THREE.Color().setHSL(0.07, 0.12, 0.28 + rng() * 0.22);
-    const mesh = new THREE.Mesh(
-      makeAsteroidGeo(size, seed),
-      new THREE.MeshStandardMaterial({ color: gray, roughness: 0.92, metalness: 0.04, emissive: gray, emissiveIntensity: 0.04 })
-    );
-    mesh.position.set(orbitR, 0, 0);
-    mesh.rotation.set(rng() * Math.PI, rng() * Math.PI, 0);
-    piv.add(mesh);
-
-    // Always provide a line (required by animate loop); keep it invisible
-    const lineGeo = new THREE.RingGeometry(orbitR - 0.003, orbitR + 0.003, 48);
-    lineGeo.rotateX(-Math.PI / 2);
-    const lineMesh = new THREE.Mesh(lineGeo, new THREE.MeshBasicMaterial({
-      transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false
-    }));
-    incl.add(lineMesh);
-
-    p.moons.push({ pivot: piv, mesh, line: lineMesh, speed, name: '', labelEl: null });
-  }
-})();
-
 // ── Named asteroid helper ────────────────────────────────────────
 const FRIEND_COLORS = [0xffb347, 0xffd166, 0xff8c69, 0xffa07a, 0xffcc80, 0xf4c842, 0xffe0a0];
 let friendAsteroidCount = 0;
