@@ -44,6 +44,7 @@ A scroll-driven **3D personal portfolio** built with pure Three.js — no bundle
 | Piano | Three YouTube embed slots for performances |
 | Ventures | Entrepreneurship timeline |
 | Non-Profit | TIDE Foundation impact dashboard |
+| Friends & Family | Live asteroid belt — visitors add themselves via Firebase |
 | Contact | Email, LinkedIn, phone, GitHub cards |
 
 ---
@@ -101,8 +102,10 @@ portfolio-3d-website/
 ├── index.html          # All sections + content (single page)
 ├── styles.css          # Theme variables, layout, animations
 ├── main.js             # Three.js scene, scroll logic, UI interactions
+├── config.js           # !! NOT committed — API keys (see below)
 ├── sw.js               # Service worker (PWA offline cache)
 ├── manifest.json       # PWA manifest
+├── avatar.png          # Headshot used in Contact section
 ├── icon-192.svg        # PWA icon (small)
 ├── icon-512.svg        # PWA icon (large)
 ├── og-image.svg        # Open Graph / Twitter card preview image
@@ -145,6 +148,55 @@ Search `index.html` for these markers:
 | `Performance Title — Composer` | Piano section | Real performance titles |
 | `Story 01 · Placeholder` | Ventures section | Your entrepreneurship stories |
 | `href="#"` on `#github-link` | Contact section | Your GitHub profile URL |
+
+---
+
+## Friends & Family — Live Asteroid Belt (Planet 9)
+
+Visitors who reach the Friends & Family section can add themselves as a named asteroid. New asteroids appear **live for every viewer** via Firebase Realtime Database. The feature falls back to `localStorage` gracefully if Firebase is not configured.
+
+### Setting up Firebase
+
+1. Go to [console.firebase.google.com](https://console.firebase.google.com) and create a project.
+2. Enable **Realtime Database** (Start in test mode or set rules — see below).
+3. Copy your project's web config (Project Settings → Your apps → SDK setup).
+4. Create `config.js` in the project root (this file is gitignored):
+
+```js
+// config.js  — never commit this file
+window.CLAUDE_API_KEY  = 'sk-ant-...';   // optional: powers the "Ask Mahir" widget
+window.FIREBASE_CONFIG = {
+  apiKey:            'AIza...',
+  authDomain:        'your-project.firebaseapp.com',
+  databaseURL:       'https://your-project-default-rtdb.firebaseio.com',
+  projectId:         'your-project',
+  storageBucket:     'your-project.appspot.com',
+  messagingSenderId: '...',
+  appId:             '...',
+};
+```
+
+5. Add `<script src="./config.js"></script>` to the `<head>` of `index.html` **before** the closing `</head>` tag (it's already there as a placeholder).
+
+### Recommended Realtime Database rules
+
+```json
+{
+  "rules": {
+    "portfolio-friends-v1": {
+      "asteroids": {
+        ".read": true,
+        ".write": true,
+        "$asteroid": {
+          ".validate": "newData.hasChildren(['name','emoji','msg','ts','seed','angle','orbitR','color'])"
+        }
+      }
+    }
+  }
+}
+```
+
+> Without `config.js`, the feature still works — additions are saved to `localStorage` and visible only on that device.
 
 ---
 

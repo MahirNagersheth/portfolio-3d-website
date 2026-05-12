@@ -1714,3 +1714,446 @@ PLANETS.forEach(p => {
     subEl.appendChild(span);
   }
 })();
+
+// ================================================================
+//  FRIENDS & FAMILY — Planet 9 (live asteroid belt)
+// ================================================================
+
+// ── Jagged asteroid geometry ─────────────────────────────────────
+function makeAsteroidGeo(radius, seed) {
+  let s = ((seed | 0) * 9301 + 49297) % 233280;
+  const rng = () => { s = (s * 9301 + 49297) % 233280; return s / 233280; };
+  const geo = new THREE.IcosahedronGeometry(radius, 2);
+  const pos = geo.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    // Per-axis independent scale so the rock looks irregular
+    const sx = 0.52 + rng() * 0.96, sy = 0.52 + rng() * 0.96, sz = 0.52 + rng() * 0.96;
+    pos.setXYZ(i, pos.getX(i) * sx, pos.getY(i) * sy, pos.getZ(i) * sz);
+  }
+  pos.needsUpdate = true;
+  geo.computeVertexNormals();
+  return geo;
+}
+
+// ── Planet 9 definition ──────────────────────────────────────────
+const FRIENDS_DEF = {
+  id: 'friends', name: 'Friends', sub: '& Family',
+  color: 0xffb347, emissive: 0x3d2200, orbit: 32.5, speed: 0.00052, size: 0.50,
+  tilt: 0.16, startAngle: 0.85, inclination: { x: 0.10, z: -0.07 },
+  texture: { style: 'rocky', base: '#3d2200', mid: '#d97c20', accent: '#ffe0a0', seed: 199 },
+  moons: [], subsections: [],
+  activeSubsectionIdx: 0, smoothIdx: 0,
+  sectionActive: false, activityT: 0, subsectionCards: [],
+};
+PLANETS.push(FRIENDS_DEF);
+PLANET_BY_ID['friends'] = FRIENDS_DEF;
+const FP = FRIENDS_DEF;
+
+// Update tour + keyboard map to include Friends
+if (typeof TOUR_SEQUENCE !== 'undefined') {
+  const cIdx = TOUR_SEQUENCE.indexOf('contact');
+  if (cIdx >= 0) TOUR_SEQUENCE.splice(cIdx, 0, 'friends');
+  else TOUR_SEQUENCE.push('friends');
+}
+if (typeof KEY_TO_PLANET !== 'undefined') {
+  const cIdx2 = KEY_TO_PLANET.indexOf('contact');
+  if (cIdx2 >= 0) KEY_TO_PLANET.splice(cIdx2, 0, 'friends');
+  else KEY_TO_PLANET.push('friends');
+}
+// Add Friends to OG meta card map
+if (typeof OG_META !== 'undefined') {
+  OG_META.friends = { label: 'Friends & Family', sub: 'People who make it worth doing', color: '#ffb347' };
+}
+
+// ── Build the planet's Three.js objects ─────────────────────────
+(function buildFriendsPlanet() {
+  const p = FP;
+  const scale = innerWidth < 720 ? 0.62 : innerWidth < 1100 ? 0.82 : 1;
+
+  const incl = new THREE.Group();
+  incl.rotation.x = p.inclination.x;
+  incl.rotation.z = p.inclination.z;
+  scene.add(incl);
+  p.inclinationGroup = incl;
+
+  const pivot = new THREE.Group();
+  pivot.rotation.y = p.startAngle;
+  incl.add(pivot);
+  p.pivot = pivot;
+
+  const pg = new THREE.Group();
+  pg.position.set(p.orbit * scale, 0, 0);
+  pg.rotation.z = p.tilt;
+  pivot.add(pg);
+  p.group = pg;
+
+  const surfMap = generatePlanetTexture(p.texture);
+  surfMap.wrapS = THREE.RepeatWrapping;
+  surfMap.wrapT = THREE.ClampToEdgeWrapping;
+  surfMap.anisotropy = renderer.capabilities.getMaxAnisotropy?.() || 4;
+
+  const mat = new THREE.MeshStandardMaterial({
+    map: surfMap, color: 0xffffff,
+    emissive: p.emissive, emissiveIntensity: 0.18,
+    roughness: 0.58, metalness: 0.12,
+  });
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(p.size, 48, 48), mat);
+  pg.add(mesh);
+  p.mesh = mesh; p.material = mat;
+
+  const halo = new THREE.Mesh(
+    new THREE.SphereGeometry(p.size * 1.18, 32, 32),
+    new THREE.MeshBasicMaterial({ color: p.color, transparent: true, opacity: 0.10, blending: THREE.AdditiveBlending, depthWrite: false })
+  );
+  pg.add(halo); p.halo = halo;
+
+  // Orbit guide ring
+  const orbitR = p.orbit;
+  const og = new THREE.RingGeometry(orbitR - 0.018, orbitR + 0.018, 256);
+  og.rotateX(-Math.PI / 2);
+  const orbitLine = new THREE.Mesh(og, new THREE.MeshBasicMaterial({
+    color: p.color, transparent: true, opacity: 0.18, side: THREE.DoubleSide, depthWrite: false,
+  }));
+  incl.add(orbitLine);
+  p.orbitLine = orbitLine;
+
+  // HTML planet label
+  const hex = '#' + p.color.toString(16).padStart(6, '0');
+  const lEl = document.createElement('button');
+  lEl.type = 'button'; lEl.className = 'planet-label'; lEl.dataset.target = p.id;
+  lEl.style.setProperty('--planet-color', hex);
+  lEl.style.setProperty('--planet-color-glow', `rgba(${(p.color>>16)&255},${(p.color>>8)&255},${p.color&255},0.45)`);
+  lEl.innerHTML = `<span class="pl-name">${p.name}</span><span class="pl-tag">${p.sub}</span>`;
+  lEl.addEventListener('mouseenter', () => setHover(p.id));
+  lEl.addEventListener('mouseleave', () => setHover(null));
+  lEl.addEventListener('focus', () => setHover(p.id));
+  lEl.addEventListener('blur', () => setHover(null));
+  lEl.addEventListener('click', () => focusPlanet(p.id, true));
+  labelsRoot.appendChild(lEl);
+  p.label = lEl;
+
+  p.titleEl = document.querySelector('#friends .section-title');
+
+  // Register with section + reveal observers
+  const secEl = document.getElementById('friends');
+  if (secEl) { sectionObs.observe(secEl); }
+  secEl?.querySelectorAll('.reveal').forEach(el => revealObs.observe(el));
+})();
+
+// ── Background asteroid belt (30 static gray rocks) ─────────────
+(function buildBackgroundBelt() {
+  const p = FP;
+  for (let i = 0; i < 30; i++) {
+    const seed = 3000 + i * 53;
+    let s = seed;
+    const rng = () => { s = (s * 9301 + 49297) % 233280; return s / 233280; };
+    const orbitR = 0.7 + rng() * 1.9;
+    const speed  = (0.005 + rng() * 0.018) * (i % 2 === 0 ? 1 : -1);
+    const size   = 0.016 + rng() * 0.028;
+    const tilt   = (rng() - 0.5) * 1.4;
+
+    const incl = new THREE.Group(); incl.rotation.x = tilt; p.group.add(incl);
+    const piv  = new THREE.Group(); piv.rotation.y = rng() * Math.PI * 2; incl.add(piv);
+
+    const gray = new THREE.Color().setHSL(0.07, 0.12, 0.28 + rng() * 0.22);
+    const mesh = new THREE.Mesh(
+      makeAsteroidGeo(size, seed),
+      new THREE.MeshStandardMaterial({ color: gray, roughness: 0.92, metalness: 0.04, emissive: gray, emissiveIntensity: 0.04 })
+    );
+    mesh.position.set(orbitR, 0, 0);
+    mesh.rotation.set(rng() * Math.PI, rng() * Math.PI, 0);
+    piv.add(mesh);
+
+    // Always provide a line (required by animate loop); keep it invisible
+    const lineGeo = new THREE.RingGeometry(orbitR - 0.003, orbitR + 0.003, 48);
+    lineGeo.rotateX(-Math.PI / 2);
+    const lineMesh = new THREE.Mesh(lineGeo, new THREE.MeshBasicMaterial({
+      transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false
+    }));
+    incl.add(lineMesh);
+
+    p.moons.push({ pivot: piv, mesh, line: lineMesh, speed, name: '', labelEl: null });
+  }
+})();
+
+// ── Named asteroid helper ────────────────────────────────────────
+const FRIEND_COLORS = [0xffb347, 0xffd166, 0xff8c69, 0xffa07a, 0xffcc80, 0xf4c842, 0xffe0a0];
+let friendAsteroidCount = 0;
+
+function addNamedAsteroid(data) {
+  const p = FP;
+  const idx  = friendAsteroidCount++;
+  const seed = ((data.timestamp || Date.now()) % 9999) + idx * 17;
+
+  let s2 = seed;
+  const rng2 = () => { s2 = (s2 * 9301 + 49297) % 233280; return s2 / 233280; };
+
+  const orbitR = 0.65 + rng2() * 1.85;
+  const speed  = (0.003 + rng2() * 0.006) * (idx % 2 === 0 ? 1 : -1);
+  const size   = 0.07 + rng2() * 0.06;
+  const tilt   = (rng2() - 0.5) * 1.0;
+  const col    = FRIEND_COLORS[idx % FRIEND_COLORS.length];
+
+  const incl = new THREE.Group(); incl.rotation.x = tilt; p.group.add(incl);
+  // Golden-angle distribution for even spread
+  const piv  = new THREE.Group();
+  piv.rotation.y = (idx * 2.399963) % (Math.PI * 2);
+  incl.add(piv);
+
+  const mesh = new THREE.Mesh(
+    makeAsteroidGeo(size, seed + 100),
+    new THREE.MeshStandardMaterial({ color: col, emissive: col, emissiveIntensity: 0.30, roughness: 0.75, metalness: 0.15 })
+  );
+  mesh.position.set(orbitR, 0, 0);
+  mesh.rotation.set(rng2() * Math.PI, rng2() * Math.PI, 0);
+  piv.add(mesh);
+
+  // Subtle orbit ring (same color, visible when planet is active)
+  const lineGeo = new THREE.RingGeometry(orbitR - 0.005, orbitR + 0.005, 64);
+  lineGeo.rotateX(-Math.PI / 2);
+  const lineMesh = new THREE.Mesh(lineGeo, new THREE.MeshBasicMaterial({
+    color: col, transparent: true, opacity: 0.08, side: THREE.DoubleSide, depthWrite: false,
+  }));
+  incl.add(lineMesh);
+
+  // HTML overlay label
+  const lbl = document.createElement('div');
+  lbl.className = 'asteroid-label';
+  lbl.innerHTML = `<span class="al-emoji">${data.emoji || '⭐'}</span><span class="al-name">${escFriendHtml(data.name)}</span>`;
+  lbl.style.visibility = 'hidden';
+  labelsRoot.appendChild(lbl);
+
+  p.moons.push({ pivot: piv, mesh, line: lineMesh, speed, name: data.name, labelEl: lbl });
+
+  // Spawn particle burst
+  spawnAsteroidBurst(p.group, orbitR, col);
+}
+
+function escFriendHtml(s) {
+  return String(s || '').replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]));
+}
+
+// ── Particle burst when a new asteroid is added ──────────────────
+function spawnAsteroidBurst(parentGroup, orbitR, color) {
+  const PARTS = 8;
+  for (let i = 0; i < PARTS; i++) {
+    const angle = (i / PARTS) * Math.PI * 2;
+    const sp = Object.assign(new THREE.Mesh(
+      new THREE.SphereGeometry(0.015, 4, 4),
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 1 })
+    ));
+    const startPos = new THREE.Vector3(Math.cos(angle) * orbitR, 0, Math.sin(angle) * orbitR);
+    const vel = new THREE.Vector3(
+      (Math.random() - 0.5) * 0.08,
+      (Math.random() - 0.5) * 0.08,
+      (Math.random() - 0.5) * 0.08
+    );
+    sp.position.copy(startPos);
+    parentGroup.add(sp);
+    const t0 = performance.now();
+    (function step() {
+      const t = (performance.now() - t0) / 900;
+      if (t >= 1) { parentGroup.remove(sp); sp.geometry.dispose(); sp.material.dispose(); return; }
+      sp.position.addScaledVector(vel, 0.016);
+      sp.material.opacity = 1 - t;
+      requestAnimationFrame(step);
+    })();
+  }
+}
+
+// ── Project asteroid labels onto screen each frame ───────────────
+const _friendsTmpVec = new THREE.Vector3();
+(function projectAsteroidLabels() {
+  const p = FP;
+  if (p && p.moons && camera && renderer) {
+    const isActive = (typeof mode !== 'undefined') && mode === 'planet' && activePlanetId === 'friends';
+    p.moons.forEach(m => {
+      if (!m.labelEl) return;
+      if (!isActive) { m.labelEl.style.display = 'none'; return; }
+      m.labelEl.style.display = '';
+      m.mesh.getWorldPosition(_friendsTmpVec);
+      _friendsTmpVec.project(camera);
+      const onScreen = _friendsTmpVec.z < 1 && _friendsTmpVec.z > -1;
+      m.labelEl.style.left = `${(_friendsTmpVec.x * 0.5 + 0.5) * innerWidth}px`;
+      m.labelEl.style.top  = `${(-_friendsTmpVec.y * 0.5 + 0.5) * innerHeight - 28}px`;
+      m.labelEl.style.visibility = onScreen ? 'visible' : 'hidden';
+    });
+  }
+  requestAnimationFrame(projectAsteroidLabels);
+})();
+
+// ── Friends data layer: Firebase (live) or localStorage (local) ──
+const FRIENDS_DB_PATH = 'portfolio-friends-v1/asteroids';
+const FRIENDS_LS_KEY  = 'mn-friends-asteroids-v1';
+const ADDED_SELF_KEY  = 'mn-friends-added-self';
+
+let friendsDbRef = null;  // Firebase ref if connected
+
+function updateFriendsUI(data) {
+  // Add to 3D scene
+  addNamedAsteroid(data);
+
+  // Add card to DOM grid
+  const grid = document.getElementById('friends-grid');
+  if (grid) {
+    const card = document.createElement('div');
+    card.className = 'asteroid-entry';
+    const relTime = data.timestamp
+      ? new Intl.RelativeTimeFormat('en', { numeric: 'auto' }).format(
+          -Math.round((Date.now() - data.timestamp) / 60000), 'minutes')
+      : '';
+    card.innerHTML = `
+      <span class="ae-emoji">${escFriendHtml(data.emoji || '⭐')}</span>
+      <strong class="ae-name">${escFriendHtml(data.name)}</strong>
+      ${data.message ? `<p class="ae-message">${escFriendHtml(data.message)}</p>` : ''}
+      <span class="ae-time">${relTime}</span>`;
+    grid.prepend(card);
+    revealObs.observe(card);
+  }
+
+  // Update counter
+  const numEl = document.getElementById('friends-count');
+  if (numEl) numEl.textContent = friendAsteroidCount;
+}
+
+function initFirebaseFriends() {
+  try {
+    if (!firebase.apps.length) firebase.initializeApp(window.FIREBASE_CONFIG);
+    const db  = firebase.database();
+    friendsDbRef = db.ref(FRIENDS_DB_PATH);
+    const statusEl = document.getElementById('friends-db-status');
+    if (statusEl) { statusEl.classList.add('live'); statusEl.querySelector('.fsb-status-text').textContent = 'Live'; }
+
+    // Listen for new entries (child_added fires for existing + future)
+    friendsDbRef.on('child_added', snap => {
+      const d = snap.val(); if (!d || !d.name) return;
+      d._key = snap.key;
+      updateFriendsUI(d);
+    });
+  } catch (e) {
+    console.warn('[Friends] Firebase init failed:', e);
+    initLocalFriends();
+  }
+}
+
+function initLocalFriends() {
+  const statusEl = document.getElementById('friends-db-status');
+  if (statusEl) { statusEl.classList.add('local'); statusEl.querySelector('.fsb-status-text').textContent = 'Local only'; }
+  document.getElementById('friends-setup-notice')?.removeAttribute('hidden');
+
+  // Load from localStorage
+  const saved = JSON.parse(localStorage.getItem(FRIENDS_LS_KEY) || '[]');
+  saved.forEach(d => updateFriendsUI(d));
+}
+
+async function submitFriendAsteroid(data) {
+  if (friendsDbRef) {
+    await friendsDbRef.push(data);
+    // Firebase child_added will fire and call updateFriendsUI automatically
+  } else {
+    // Local: update manually
+    const saved = JSON.parse(localStorage.getItem(FRIENDS_LS_KEY) || '[]');
+    saved.push(data);
+    localStorage.setItem(FRIENDS_LS_KEY, JSON.stringify(saved));
+    updateFriendsUI(data);
+  }
+}
+
+// Start — load Firebase SDK dynamically if config present
+(function startFriendsLayer() {
+  if (window.FIREBASE_CONFIG && window.FIREBASE_CONFIG.databaseURL) {
+    // Dynamically load Firebase compat SDK
+    const s1 = document.createElement('script');
+    s1.src = 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js';
+    s1.onload = () => {
+      const s2 = document.createElement('script');
+      s2.src = 'https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js';
+      s2.onload = initFirebaseFriends;
+      s2.onerror = initLocalFriends;
+      document.head.appendChild(s2);
+    };
+    s1.onerror = initLocalFriends;
+    document.head.appendChild(s1);
+  } else {
+    initLocalFriends();
+  }
+})();
+
+// ── "Add yourself" modal logic ───────────────────────────────────
+function openAddSelfModal() { document.getElementById('add-self-modal')?.removeAttribute('hidden'); document.getElementById('add-self-name')?.focus(); }
+function closeAddSelfModal() { document.getElementById('add-self-modal')?.setAttribute('hidden', ''); }
+
+document.getElementById('friends-add-btn')?.addEventListener('click', openAddSelfModal);
+document.getElementById('asm-close')?.addEventListener('click', closeAddSelfModal);
+document.getElementById('asm-backdrop')?.addEventListener('click', closeAddSelfModal);
+
+// Emoji picker
+document.querySelectorAll('.emoji-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.emoji-btn').forEach(b => b.classList.remove('selected'));
+    btn.classList.add('selected');
+  });
+});
+
+document.getElementById('add-self-form')?.addEventListener('submit', async e => {
+  e.preventDefault();
+  const name = document.getElementById('add-self-name')?.value.trim();
+  if (!name) { document.getElementById('add-self-name')?.focus(); return; }
+
+  const emoji   = document.querySelector('.emoji-btn.selected')?.dataset.emoji || '⭐';
+  const message = (document.getElementById('add-self-msg')?.value || '').trim();
+
+  const submitBtn  = document.getElementById('add-self-submit');
+  const submitText = submitBtn?.querySelector('.asm-submit-text');
+  const submitLoad = submitBtn?.querySelector('.asm-submit-loading');
+
+  if (submitBtn) submitBtn.disabled = true;
+  if (submitText) submitText.hidden = true;
+  if (submitLoad) submitLoad.hidden = false;
+
+  try {
+    await submitFriendAsteroid({ name, emoji, message, timestamp: Date.now() });
+    closeAddSelfModal();
+    localStorage.setItem(ADDED_SELF_KEY, '1');
+
+    // Toast
+    const toast = document.createElement('div');
+    toast.className = 'friend-toast';
+    toast.textContent = `${emoji} ${name} joined the asteroid belt!`;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.classList.add('visible'), 10);
+    setTimeout(() => { toast.classList.remove('visible'); setTimeout(() => toast.remove(), 400); }, 3500);
+
+    // Reset form
+    if (document.getElementById('add-self-name')) document.getElementById('add-self-name').value = '';
+    if (document.getElementById('add-self-msg'))  document.getElementById('add-self-msg').value = '';
+    document.querySelectorAll('.emoji-btn').forEach((b, i) => b.classList.toggle('selected', i === 0));
+  } catch (err) {
+    console.error('[Friends] submit failed:', err);
+  } finally {
+    if (submitBtn) submitBtn.disabled = false;
+    if (submitText) submitText.hidden = false;
+    if (submitLoad) submitLoad.hidden = true;
+  }
+});
+
+// Escape key closes the modal
+addEventListener('keydown', e => {
+  if (e.key === 'Escape' && document.getElementById('add-self-modal') && !document.getElementById('add-self-modal').hasAttribute('hidden')) {
+    e.stopImmediatePropagation(); closeAddSelfModal();
+  }
+});
+
+// ── First-visit welcome prompt (fires once per device) ───────────
+let _friendsVisited = false;
+const _friendsSecEl = document.getElementById('friends');
+if (_friendsSecEl) {
+  new IntersectionObserver(entries => {
+    if (!_friendsVisited && entries.some(e => e.isIntersecting)) {
+      _friendsVisited = true;
+      if (!localStorage.getItem(ADDED_SELF_KEY)) {
+        setTimeout(openAddSelfModal, 1600);
+      }
+    }
+  }, { threshold: 0.35 }).observe(_friendsSecEl);
+}

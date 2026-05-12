@@ -28,6 +28,9 @@ dist/
 .env.local
 .env.*.local
 
+# Local config (API keys — never commit)
+config.js
+
 # Thumbnails
 Thumbs.db
 ehthumbs.db

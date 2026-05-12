@@ -77,6 +77,7 @@
         <li><a href="#entrepreneurship" data-link="entrepreneurship">Ventures</a></li>
         <li><a href="#nonprofit" data-link="nonprofit">Impact</a></li>
         <li><a href="#writing" data-link="writing">Notes</a></li>
+        <li><a href="#friends" data-link="friends">Friends</a></li>
         <li><a href="#contact" data-link="contact" class="nav-cta">Contact</a></li>
       </ul>
 
@@ -718,10 +719,48 @@
       </div>
     </section>
 
+    <!-- FRIENDS & FAMILY -->
+    <section id="friends" class="section friends-section">
+      <div class="section-head">
+        <span class="section-num">08</span>
+        <h2 class="section-title">Friends <span class="accent">&amp; Family</span></h2>
+        <p class="section-sub">The people who make it worth doing. Each of you is an asteroid in my orbit.</p>
+      </div>
+
+      <!-- Live stats bar -->
+      <div class="friends-stats-bar reveal">
+        <div class="fsb-count">
+          <span id="friends-count" class="fsb-num">0</span>
+          <span class="fsb-label">asteroids in orbit</span>
+        </div>
+        <div class="fsb-status" id="friends-db-status">
+          <span class="fsb-dot"></span>
+          <span class="fsb-status-text">Connecting…</span>
+        </div>
+      </div>
+
+      <!-- Live asteroid grid — populated by JS -->
+      <div class="friends-grid" id="friends-grid"></div>
+
+      <!-- CTA -->
+      <div class="friends-cta reveal">
+        <button class="friends-add-btn" id="friends-add-btn" type="button">
+          <span class="fab-icon">✦</span>
+          Add yourself as an asteroid
+        </button>
+        <p class="friends-hint">Your name and emoji become a real 3D asteroid orbiting this planet — visible to everyone who visits.</p>
+      </div>
+
+      <!-- Setup notice (shown only when Firebase not configured) -->
+      <div class="friends-setup-notice" id="friends-setup-notice" hidden>
+        <p>🔌 <strong>Local mode</strong> — asteroids only persist on this device. <a href="https://github.com/MahirNagersheth/portfolio-3d-website#friends--family-setup" target="_blank" rel="noopener">Set up Firebase</a> for live cross-device sharing.</p>
+      </div>
+    </section>
+
     <!-- CONTACT -->
     <section id="contact" class="section contact">
       <div class="section-head">
-        <span class="section-num">08</span>
+        <span class="section-num">09</span>
         <h2 class="section-title">Let's <span class="accent">talk</span></h2>
         <p class="section-sub">Recruiting, collaborating, or just want to swap notes? My inbox is open.</p>
       </div>
@@ -838,7 +877,7 @@
       <h3 id="cs-title" class="cs-title">Keyboard shortcuts</h3>
       <p class="cs-sub">Fly the cosmos without the trackpad.</p>
       <dl class="cs-list">
-        <div class="cs-row"><dt><kbd>1</kbd>-<kbd>8</kbd></dt><dd>Jump to each planet (Work → Contact)</dd></div>
+        <div class="cs-row"><dt><kbd>1</kbd>-<kbd>9</kbd></dt><dd>Jump to each planet (Work → Contact)</dd></div>
         <div class="cs-row"><dt><kbd>Esc</kbd></dt><dd>Return to the solar overview</dd></div>
         <div class="cs-row"><dt><kbd>T</kbd></dt><dd>Toggle day / night mode</dd></div>
         <div class="cs-row"><dt><kbd>?</kbd></dt><dd>Open / close this cheatsheet</dd></div>
@@ -847,6 +886,46 @@
         <div class="cs-row"><dt><kbd>⌘K</kbd> / <kbd>Ctrl+K</kbd></dt><dd>Open search palette</dd></div>
       </dl>
       <p class="cs-tip">Tip · click the sun a few times. Just for the joy of it.</p>
+    </div>
+  </div>
+
+  <!-- Friends & Family — "Add yourself" modal -->
+  <div class="add-self-modal" id="add-self-modal" hidden role="dialog" aria-modal="true" aria-labelledby="asm-title">
+    <div class="asm-backdrop" id="asm-backdrop"></div>
+    <div class="asm-panel">
+      <button class="asm-close" id="asm-close" type="button" aria-label="Close">×</button>
+      <div class="asm-comet" aria-hidden="true">☄️</div>
+      <h3 id="asm-title" class="asm-title">Join the asteroid belt</h3>
+      <p class="asm-sub">Your asteroid will appear on the Friends &amp; Family planet in real time for everyone visiting Mahir's portfolio.</p>
+      <form id="add-self-form" novalidate>
+        <div class="asm-field">
+          <label for="add-self-name">Your name <span class="asm-req">*</span></label>
+          <input type="text" id="add-self-name" maxlength="25" placeholder="e.g. Ananya" required autocomplete="given-name">
+        </div>
+        <div class="asm-field">
+          <label>Pick your asteroid vibe</label>
+          <div class="emoji-picker" role="group" aria-label="Choose an emoji">
+            <button type="button" class="emoji-btn selected" data-emoji="⭐">⭐</button>
+            <button type="button" class="emoji-btn" data-emoji="🌟">🌟</button>
+            <button type="button" class="emoji-btn" data-emoji="☄️">☄️</button>
+            <button type="button" class="emoji-btn" data-emoji="🪐">🪐</button>
+            <button type="button" class="emoji-btn" data-emoji="🌙">🌙</button>
+            <button type="button" class="emoji-btn" data-emoji="💫">💫</button>
+            <button type="button" class="emoji-btn" data-emoji="🌻">🌻</button>
+            <button type="button" class="emoji-btn" data-emoji="🎹">🎹</button>
+            <button type="button" class="emoji-btn" data-emoji="❤️">❤️</button>
+            <button type="button" class="emoji-btn" data-emoji="🚀">🚀</button>
+          </div>
+        </div>
+        <div class="asm-field">
+          <label for="add-self-msg">Short note <span class="asm-opt">(optional · 60 chars)</span></label>
+          <input type="text" id="add-self-msg" maxlength="60" placeholder="e.g. Miss you from Mumbai! 🌊">
+        </div>
+        <button type="submit" class="asm-submit" id="add-self-submit">
+          <span class="asm-submit-text">Launch my asteroid ✦</span>
+          <span class="asm-submit-loading" hidden>Launching…</span>
+        </button>
+      </form>
     </div>
   </div>
 
