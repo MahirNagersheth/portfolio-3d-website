@@ -1302,10 +1302,10 @@ body[data-section="contact"] {
 /* WRITING (Pluto-style 8th planet — outer cards) */
 /* Masters Application Series */
 .series-block {
-  margin-bottom: 3rem;
+  margin-bottom: 0;
 }
 .series-header {
-  margin-bottom: 1.5rem;
+  margin-bottom: 1.25rem;
 }
 .series-eyebrow {
   display: inline-block;
@@ -1333,18 +1333,15 @@ body[data-section="contact"] {
   gap: 0.6rem;
 }
 .series-part {
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: linear-gradient(180deg, rgba(17,20,29,0.7), rgba(11,13,20,0.4));
+  border-top: 1px solid var(--line);
   overflow: hidden;
-  transition: border-color 0.25s;
 }
-.series-part[open] { border-color: rgba(196,30,58,0.35); }
+.series-part:first-child { border-top: none; }
 .series-part summary {
   display: flex;
   align-items: center;
   gap: 1rem;
-  padding: 1rem 1.25rem;
+  padding: 0.85rem 0;
   cursor: pointer;
   list-style: none;
   user-select: none;
@@ -1374,8 +1371,7 @@ body[data-section="contact"] {
   color: var(--fg);
 }
 .part-body {
-  padding: 0 1.25rem 1.25rem;
-  border-top: 1px solid var(--line);
+  padding: 0 0 1rem;
 }
 .part-body p {
   color: var(--fg-dim);
@@ -1399,10 +1395,8 @@ body[data-section="contact"] {
   padding-top: 1rem;
 }
 .series-tribute {
-  border-color: rgba(255,255,255,0.1);
-  background: linear-gradient(180deg, rgba(20,15,25,0.8), rgba(11,10,16,0.6));
+  border-top-color: rgba(180,160,200,0.2);
 }
-.series-tribute[open] { border-color: rgba(180,160,200,0.3); }
 
 .writing-grid {
   display: grid;
