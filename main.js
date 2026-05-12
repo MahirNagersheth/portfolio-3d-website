@@ -1289,3 +1289,428 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch(() => { /* no-op offline */ });
   });
 }
+
+// ================================================================
+//  FEATURES 1-12 — All new feature implementations
+// ================================================================
+
+// ── F1: Micro-animations — handled entirely in CSS ───────────────
+// (breathing on .sl-name, typing-pulse on .now-date,
+//  shimmer-sweep on .pl-tag — no JS needed)
+
+// ── F2: Spacebar tour mode ───────────────────────────────────────
+const TOUR_SEQUENCE = ['work','education','projects','piano','entrepreneurship','nonprofit','writing','contact'];
+let tourActive = false, tourStep = 0, tourTimer = null;
+const tourIndicatorEl = (() => {
+  const el = document.createElement('div');
+  el.className = 'tour-indicator';
+  el.innerHTML = `<span>Auto-tour</span><div class="tour-progress-dots">${
+    TOUR_SEQUENCE.map(() => '<div class="tour-dot"></div>').join('')
+  }</div><span>Release Space to stop</span>`;
+  document.body.appendChild(el);
+  return el;
+})();
+
+function tourUpdateDots() {
+  tourIndicatorEl.querySelectorAll('.tour-dot').forEach((d, i) => {
+    d.classList.toggle('active', i === tourStep - 1);
+  });
+}
+function tourStop() {
+  tourActive = false; clearTimeout(tourTimer);
+  tourIndicatorEl.classList.remove('active');
+}
+function tourAdvance() {
+  if (!tourActive) return;
+  if (tourStep >= TOUR_SEQUENCE.length) {
+    tourTimer = setTimeout(() => { tourStop(); focusOverview(false); }, 4500);
+    return;
+  }
+  focusPlanet(TOUR_SEQUENCE[tourStep], true);
+  tourStep++;
+  tourUpdateDots();
+  tourTimer = setTimeout(tourAdvance, 5200);
+}
+function tourStart() {
+  if (tourActive) return;
+  tourActive = true; tourStep = 0;
+  tourIndicatorEl.classList.add('active');
+  tourAdvance();
+}
+
+addEventListener('keydown', e => {
+  if (e.code !== 'Space') return;
+  const tag = (e.target?.tagName || '').toLowerCase();
+  if (tag === 'input' || tag === 'textarea') return;
+  if (!document.getElementById('cheatsheet')?.hasAttribute('hidden')) return;
+  if (!document.getElementById('search-palette')?.hasAttribute('hidden')) return;
+  if (!document.getElementById('ask-panel')?.hasAttribute('hidden')) return;
+  e.preventDefault();
+  if (!tourActive) tourStart();
+});
+addEventListener('keyup', e => { if (e.code === 'Space' && tourActive) tourStop(); });
+
+// ── F3: Per-section dynamic OG cards via Canvas API ─────────────
+const ogCanvas = Object.assign(document.createElement('canvas'), { width: 1200, height: 630 });
+const ogCtx = ogCanvas.getContext('2d');
+const OG_META = {
+  work:           { label: 'Work Experience',   sub: 'Goldman Sachs · Risk Division',        color: '#d6b25e' },
+  education:      { label: 'Education',          sub: 'Carnegie Mellon MISM · PDEU',          color: '#c41e3a' },
+  projects:       { label: 'Projects',           sub: 'ML · Deep Learning · Data Engineering', color: '#4a7ff5' },
+  piano:          { label: 'Piano',              sub: 'Selected Performances',                color: '#b46be0' },
+  entrepreneurship:{ label: 'Ventures',          sub: 'Founder Stories',                      color: '#4ad991' },
+  nonprofit:      { label: 'Impact',             sub: 'TIDE Foundation · 7,000+ students',    color: '#4ed5cf' },
+  writing:        { label: 'Notes & Writing',    sub: 'Long-form thoughts',                   color: '#9c8dc7' },
+  contact:        { label: "Let's Talk",         sub: 'mnagersh@andrew.cmu.edu',               color: '#e0e0e0' },
+};
+function renderOGCard(sectionId) {
+  const meta = OG_META[sectionId]; if (!meta) return;
+  const ctx = ogCtx, W = 1200, H = 630;
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#07080d'; ctx.fillRect(0, 0, W, H);
+  const grd = ctx.createRadialGradient(W * 0.55, H * 0.45, 0, W * 0.55, H * 0.45, 480);
+  grd.addColorStop(0, meta.color + '44'); grd.addColorStop(1, 'transparent');
+  ctx.fillStyle = grd; ctx.fillRect(0, 0, W, H);
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = 'rgba(255,255,255,0.32)'; ctx.font = '500 20px sans-serif';
+  ctx.fillText('MAHIR NAGERSHETH', 80, 230);
+  ctx.fillStyle = '#fff'; ctx.font = 'bold 62px sans-serif';
+  ctx.fillText(meta.label, 80, 305);
+  ctx.fillStyle = 'rgba(255,255,255,0.58)'; ctx.font = '400 28px sans-serif';
+  ctx.fillText(meta.sub, 80, 368);
+  ctx.fillStyle = meta.color; ctx.fillRect(80, 425, 110, 4);
+  const url = ogCanvas.toDataURL('image/png');
+  document.querySelectorAll('meta[property="og:image"],meta[name="twitter:image"]')
+    .forEach(m => m.setAttribute('content', url));
+}
+// Hook into setMode to update OG card whenever planet changes
+const _smOG = setMode;
+setMode = function(newMode, planetId) {
+  _smOG(newMode, planetId);
+  if (newMode === 'planet' && planetId) renderOGCard(planetId);
+};
+
+// ── F4: Changelog modal ──────────────────────────────────────────
+const changelogModal = document.getElementById('changelog-modal');
+function openChangelog()  { changelogModal?.removeAttribute('hidden'); }
+function closeChangelog() { changelogModal?.setAttribute('hidden', ''); }
+document.getElementById('footer-year')?.addEventListener('click', openChangelog);
+document.getElementById('cl-close')?.addEventListener('click', closeChangelog);
+changelogModal?.querySelector('.cl-backdrop')?.addEventListener('click', closeChangelog);
+addEventListener('keydown', e => {
+  if (e.key === 'Escape' && changelogModal && !changelogModal.hasAttribute('hidden')) {
+    e.stopImmediatePropagation(); closeChangelog();
+  }
+});
+
+// ── F5: YouTube inline hover/modal for piano cards ───────────────
+function extractVideoId(href) {
+  const m = href?.match(/(?:v=|\/shorts\/|youtu\.be\/)([A-Za-z0-9_-]{11})/);
+  return m ? m[1] : null;
+}
+document.querySelectorAll('.piano-card').forEach(card => {
+  const vid = extractVideoId(card.getAttribute('href') || '');
+  if (!vid) return;
+  const btn = Object.assign(document.createElement('button'), {
+    type: 'button', className: 'yt-hover-btn', textContent: '▶ Play here',
+  });
+  btn.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); openYTModal(vid); });
+  card.appendChild(btn);
+});
+const ytModal    = document.getElementById('yt-modal');
+const ytIframe   = document.getElementById('yt-modal-iframe');
+function openYTModal(vid) {
+  if (ytIframe) ytIframe.src = `https://www.youtube-nocookie.com/embed/${vid}?autoplay=1&rel=0`;
+  ytModal?.removeAttribute('hidden');
+}
+function closeYTModal() {
+  if (ytIframe) ytIframe.src = '';
+  ytModal?.setAttribute('hidden', '');
+}
+document.getElementById('yt-modal-backdrop')?.addEventListener('click', closeYTModal);
+document.getElementById('yt-modal-close')?.addEventListener('click', closeYTModal);
+addEventListener('keydown', e => {
+  if (e.key === 'Escape' && ytModal && !ytModal.hasAttribute('hidden')) {
+    e.stopImmediatePropagation(); closeYTModal();
+  }
+});
+
+// ── F6: Ask Mahir — Claude-powered chat widget ───────────────────
+const PORTFOLIO_SYSTEM = `You are a concise AI assistant for Mahir Nagersheth's portfolio. Answer questions about Mahir using only the facts below. Keep answers to 2-4 sentences. If a question goes beyond these facts, say you don't have that info and suggest emailing mnagersh@andrew.cmu.edu.
+
+Facts:
+- CMU MISM student (Business Intelligence & Data Analytics), graduating December 2026, Pittsburgh PA
+- Incoming Goldman Sachs Engineering Summer Analyst, Risk Division, Dallas TX, June 2026
+- Published IEEE researcher: "Leveraging ML for Predicting Vehicle Fuel Efficiency", ICONAT 2024
+- Data Engineer at Rapidops Inc (Azure Data Factory, Synapse, Snowflake, Power BI, DAX, T-SQL)
+- Built 13-agent LangGraph Agentic Portfolio Management System (Groq, Streamlit, SQLite, human-in-the-loop)
+- Built Time-Adaptive Masked DiT + Optimal-Transport Flow for ImageNet-100 generation (PyTorch, FID eval)
+- Credit Risk Prediction App (XGBoost, ExtraTrees, GridSearchCV, Streamlit)
+- TIDE Foundation Project Manager: 85 volunteers, 14 schools, 20+ events, 7000+ students, raised ₹45,650
+- Pianist who performs and posts on YouTube
+- Languages: English, Hindi, Gujarati
+- Skills: Python, SQL, Azure, Snowflake, LangGraph, LLM agents, PyTorch, TensorFlow, scikit-learn, XGBoost, Streamlit, BeautifulSoup, SSIS
+- Contact: mnagersh@andrew.cmu.edu | linkedin.com/in/mahir-nagersheth | github.com/MahirNagersheth`;
+
+const askBubble   = document.getElementById('ask-bubble');
+const askPanel    = document.getElementById('ask-panel');
+const askMessages = document.getElementById('ask-messages');
+const askInput    = document.getElementById('ask-input');
+const askSend     = document.getElementById('ask-send');
+
+askBubble?.addEventListener('click', () => { askPanel?.removeAttribute('hidden'); askInput?.focus(); });
+document.getElementById('ask-close')?.addEventListener('click', () => askPanel?.setAttribute('hidden', ''));
+
+function appendAskMsg(text, role) {
+  const d = Object.assign(document.createElement('div'), { className: `ask-msg ${role}`, textContent: text });
+  askMessages?.appendChild(d);
+  if (askMessages) askMessages.scrollTop = askMessages.scrollHeight;
+  return d;
+}
+async function sendAskMessage() {
+  const q = askInput?.value.trim(); if (!q) return;
+  if (askInput) askInput.value = '';
+  appendAskMsg(q, 'user');
+  const typing = Object.assign(document.createElement('div'), { className: 'ask-msg assistant typing' });
+  askMessages?.appendChild(typing);
+  if (askMessages) askMessages.scrollTop = askMessages.scrollHeight;
+
+  const apiKey = window.CLAUDE_API_KEY;
+  if (!apiKey) {
+    typing.remove();
+    appendAskMsg('To enable AI responses, add a config.js file with window.CLAUDE_API_KEY set. Until then, reach Mahir directly at mnagersh@andrew.cmu.edu!', 'assistant');
+    return;
+  }
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-allow-browser': 'true',
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001', max_tokens: 280,
+        system: PORTFOLIO_SYSTEM,
+        messages: [{ role: 'user', content: q }],
+      }),
+    });
+    const data = await res.json();
+    typing.remove();
+    appendAskMsg(data.content?.[0]?.text || "Couldn't reach the AI right now.", 'assistant');
+  } catch {
+    typing.remove();
+    appendAskMsg("Network error — try emailing Mahir at mnagersh@andrew.cmu.edu", 'assistant');
+  }
+}
+askSend?.addEventListener('click', sendAskMessage);
+askInput?.addEventListener('keydown', e => { if (e.key === 'Enter') sendAskMessage(); });
+
+// ── F7: Live Credit Risk Playground ─────────────────────────────
+function updateCreditRisk() {
+  const income = +document.getElementById('cd-income')?.value || 65000;
+  const loan   = +document.getElementById('cd-loan')?.value   || 15000;
+  const emp    = +document.getElementById('cd-emp')?.value    || 5;
+  const dti    = +document.getElementById('cd-dti')?.value    || 0.25;
+  const hist   = +document.getElementById('cd-hist')?.value   || 7;
+
+  const fmt = n => '$' + Math.round(n).toLocaleString();
+  const el = id => document.getElementById(id);
+  if (el('cd-income-val')) el('cd-income-val').textContent = fmt(income);
+  if (el('cd-loan-val'))   el('cd-loan-val').textContent   = fmt(loan);
+  if (el('cd-emp-val'))    el('cd-emp-val').textContent    = emp + (emp === 1 ? ' yr' : ' yrs');
+  if (el('cd-dti-val'))    el('cd-dti-val').textContent    = dti.toFixed(2);
+  if (el('cd-hist-val'))   el('cd-hist-val').textContent   = hist + (hist === 1 ? ' yr' : ' yrs');
+
+  const ltiScore  = Math.min(1, (loan / income) / 0.5);
+  const dtiScore  = Math.min(1, dti / 0.5);
+  const empScore  = Math.max(0, 1 - emp / 25);
+  const histScore = Math.max(0, 1 - hist / 20);
+  const incScore  = 1 - Math.min(income, 200000) / 200000;
+  const raw = 0.30 * ltiScore + 0.25 * dtiScore + 0.20 * empScore + 0.15 * histScore + 0.10 * incScore;
+  const prob = Math.round(Math.max(2, Math.min(98, raw * 100)));
+
+  if (el('cd-score')) el('cd-score').textContent = prob;
+  const arc = el('cd-arc-fill');
+  if (arc) {
+    arc.setAttribute('stroke-dasharray', `${(prob / 100) * 173} ${173 - (prob / 100) * 173}`);
+    arc.style.stroke = prob < 33 ? '#4ad991' : prob < 66 ? '#ffc850' : '#ff5555';
+  }
+  const rl = el('cd-risk-label');
+  if (rl) {
+    if (prob < 33)      { rl.textContent = 'Low Risk';    rl.className = 'cd-risk-label'; }
+    else if (prob < 66) { rl.textContent = 'Medium Risk'; rl.className = 'cd-risk-label medium'; }
+    else                { rl.textContent = 'High Risk';   rl.className = 'cd-risk-label high'; }
+  }
+  const fl = el('cd-factors');
+  if (fl) {
+    const factors = [
+      { label: 'Loan-to-income',      v: ltiScore  },
+      { label: 'Debt-to-income',      v: dtiScore  },
+      { label: 'Employment history',  v: empScore  },
+      { label: 'Credit history',      v: histScore },
+    ].sort((a, b) => b.v - a.v);
+    fl.innerHTML = factors.map(f =>
+      `<li>${f.label}<div class="cd-factor-bar" style="width:${Math.round(f.v * 100)}%"></div></li>`
+    ).join('');
+  }
+}
+['cd-income','cd-loan','cd-emp','cd-dti','cd-hist'].forEach(id =>
+  document.getElementById(id)?.addEventListener('input', updateCreditRisk)
+);
+updateCreditRisk();
+
+// ── F8: Section background overlays (procedural + photo-ready) ───
+// Drop real workspace photo paths into SECTION_BACKGROUNDS to activate.
+// Empty arrays fall back to a subtle procedural planet-color radial.
+const SECTION_BACKGROUNDS = {
+  work: [], education: [], projects: [], piano: [],
+  entrepreneurship: [], nonprofit: [], writing: [], contact: [],
+};
+PLANETS.forEach(p => {
+  const sec = document.getElementById(p.id); if (!sec) return;
+  const ov  = document.createElement('div');
+  ov.className = 'section-bg-overlay';
+  const imgs = SECTION_BACKGROUNDS[p.id] || [];
+  if (imgs.length) {
+    ov.style.cssText = `background-image:url(${imgs[0]});background-size:cover;background-position:center;opacity:0.05;`;
+  } else {
+    const hex = '#' + p.color.toString(16).padStart(6, '0');
+    ov.style.cssText = `background:radial-gradient(ellipse 80% 60% at 65% 35%,${hex}1a,transparent);`;
+  }
+  sec.appendChild(ov);
+});
+
+// ── F9: Bookshelf — rendered via HTML, no extra JS needed ────────
+
+// ── F10: Recommendations carousel ───────────────────────────────
+(function() {
+  const track = document.getElementById('reco-track');
+  const dotsEl = document.getElementById('reco-dots');
+  if (!track) return;
+  const cards = [...track.querySelectorAll('.reco-card')];
+  if (!cards.length) return;
+  let cur = 0;
+  cards[0].classList.add('reco-active');
+  cards.forEach((_, i) => {
+    const d = Object.assign(document.createElement('button'), {
+      className: 'reco-dot' + (i === 0 ? ' active' : ''),
+      type: 'button',
+    });
+    d.setAttribute('aria-label', `Recommendation ${i + 1}`);
+    d.addEventListener('click', () => goTo(i));
+    dotsEl?.appendChild(d);
+  });
+  function goTo(idx) {
+    cards[cur].classList.remove('reco-active');
+    dotsEl?.querySelectorAll('.reco-dot')[cur]?.classList.remove('active');
+    cur = (idx + cards.length) % cards.length;
+    cards[cur].classList.add('reco-active');
+    dotsEl?.querySelectorAll('.reco-dot')[cur]?.classList.add('active');
+  }
+  setInterval(() => goTo(cur + 1), 5500);
+})();
+
+// ── F11: Cmd+K search palette ────────────────────────────────────
+(function() {
+  const palette = document.getElementById('search-palette');
+  const spInput = document.getElementById('sp-input');
+  const spList  = document.getElementById('sp-results');
+  if (!palette || !spInput || !spList) return;
+
+  // Build index
+  const IDX = [];
+  PLANETS.forEach(p => IDX.push({
+    title: p.name, sub: p.sub,
+    id: p.id, color: '#' + p.color.toString(16).padStart(6, '0'),
+  }));
+  document.querySelectorAll('.project-card h3').forEach(h => {
+    const tags = h.closest('.project-card')?.dataset.tags || '';
+    IDX.push({ title: h.textContent.trim(), sub: 'Project · ' + tags.split(' ').slice(0,3).join(', '), id: 'projects', color: '#4a7ff5' });
+  });
+  document.querySelectorAll('.work-role').forEach(h => {
+    const co = h.closest('.work-card')?.querySelector('.work-company')?.textContent.replace(/\s+/g,' ').trim() || '';
+    IDX.push({ title: h.textContent.trim(), sub: co, id: 'work', color: '#d6b25e' });
+  });
+  document.querySelectorAll('.sc-chip').forEach(c => {
+    IDX.push({ title: c.textContent.trim(), sub: 'Skill', id: 'projects', color: '#4a7ff5' });
+  });
+
+  let focused = -1;
+
+  function open()  { palette.removeAttribute('hidden'); spInput.value=''; focused=-1; render(''); spInput.focus(); }
+  function close() { palette.setAttribute('hidden',''); }
+
+  function render(q) {
+    const lq = q.toLowerCase();
+    const hits = !lq ? IDX.slice(0,8) : IDX.filter(x =>
+      x.title.toLowerCase().includes(lq) || x.sub.toLowerCase().includes(lq)
+    ).slice(0,8);
+    focused = -1;
+    if (!hits.length) { spList.innerHTML = `<li class="sp-empty">No results for "${q}"</li>`; return; }
+    spList.innerHTML = hits.map((x, i) => `
+      <li class="sp-result" data-i="${i}" role="option" tabindex="-1">
+        <span class="sp-result-dot" style="background:${x.color}"></span>
+        <span class="sp-result-text">
+          <span class="sp-result-title">${x.title}</span>
+          <span class="sp-result-sub">${x.sub}</span>
+        </span>
+        <kbd class="sp-result-kbd">↵</kbd>
+      </li>`).join('');
+    spList.querySelectorAll('.sp-result').forEach((el, i) => {
+      el.addEventListener('click', () => { close(); focusPlanet(hits[i].id, true); });
+      el.addEventListener('mouseenter', () => {
+        spList.querySelectorAll('.sp-result').forEach(r => r.classList.remove('focused'));
+        el.classList.add('focused'); focused = i;
+      });
+    });
+  }
+
+  spInput.addEventListener('input', () => render(spInput.value));
+  spInput.addEventListener('keydown', e => {
+    const items = [...spList.querySelectorAll('.sp-result')];
+    if (e.key === 'ArrowDown') { e.preventDefault(); focused = Math.min(focused+1, items.length-1); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); focused = Math.max(focused-1, 0); }
+    else if (e.key === 'Enter' && focused >= 0) { items[focused].click(); return; }
+    else if (e.key === 'Escape') { close(); return; }
+    items.forEach((el, i) => el.classList.toggle('focused', i === focused));
+    items[focused]?.scrollIntoView({ block:'nearest' });
+  });
+  palette.querySelector('.sp-backdrop')?.addEventListener('click', close);
+  addEventListener('keydown', e => {
+    if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) { e.preventDefault(); palette.hasAttribute('hidden') ? open() : close(); }
+    if (e.key === 'Escape' && !palette.hasAttribute('hidden')) { e.stopImmediatePropagation(); close(); }
+  });
+
+  render('');
+})();
+
+// ── F12: Timezone-aware greeting in sun label ────────────────────
+(function() {
+  const nameEl = document.querySelector('.sun-label .sl-name');
+  const subEl  = document.querySelector('.sun-label .sl-sub');
+  if (!nameEl) return;
+
+  const h = new Date().getHours();
+  const greet = h < 5 ? 'Up late? Meet' : h < 12 ? 'Good morning — meet' : h < 17 ? 'Good afternoon — meet' : h < 21 ? 'Good evening — meet' : 'Good night — meet';
+  nameEl.textContent = `${greet} Mahir`;
+
+  if (subEl) {
+    // Pittsburgh is UTC-4 (EDT) / UTC-5 (EST). Use live offset.
+    const now = new Date();
+    const pittsburgNow = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+    const pittH = pittsburgNow.getHours() + pittsburgNow.getMinutes() / 60;
+    let note;
+    if (pittH >= 9 && pittH < 23) {
+      note = ' · 🟢 likely online now';
+    } else {
+      const hoursUntil = pittH < 9 ? 9 - pittH : 9 + (24 - pittH);
+      note = ` · typically online in ~${Math.ceil(hoursUntil)}h`;
+    }
+    const span = document.createElement('span');
+    span.className = 'sl-online-note';
+    span.textContent = note;
+    subEl.appendChild(span);
+  }
+})();

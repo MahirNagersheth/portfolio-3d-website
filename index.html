@@ -397,6 +397,40 @@
 
       </div>
 
+      <!-- Live Credit Risk Playground (Feature 7) -->
+      <div class="credit-demo reveal" id="credit-demo">
+        <div class="cd-head">
+          <span class="cd-eyebrow">★ Live Demo · Credit Risk Predictor</span>
+          <h3>Try the Model</h3>
+          <p>Adjust the inputs — the risk score updates in real time. Runs entirely in your browser using the same feature set as the Streamlit app.</p>
+        </div>
+        <div class="cd-layout">
+          <div class="cd-inputs">
+            <label><span>Annual Income <strong id="cd-income-val">$65,000</strong></span>
+              <input type="range" id="cd-income" min="20000" max="200000" step="1000" value="65000"></label>
+            <label><span>Loan Amount <strong id="cd-loan-val">$15,000</strong></span>
+              <input type="range" id="cd-loan" min="1000" max="50000" step="500" value="15000"></label>
+            <label><span>Employment Length <strong id="cd-emp-val">5 yrs</strong></span>
+              <input type="range" id="cd-emp" min="0" max="30" step="1" value="5"></label>
+            <label><span>Debt-to-Income Ratio <strong id="cd-dti-val">0.25</strong></span>
+              <input type="range" id="cd-dti" min="0" max="1" step="0.01" value="0.25"></label>
+            <label><span>Credit History Length <strong id="cd-hist-val">7 yrs</strong></span>
+              <input type="range" id="cd-hist" min="0" max="30" step="1" value="7"></label>
+          </div>
+          <div class="cd-output">
+            <div class="cd-gauge">
+              <svg viewBox="0 0 120 70" class="cd-arc">
+                <path class="cd-arc-bg" d="M10 65 A55 55 0 0 1 110 65"/>
+                <path class="cd-arc-fill" id="cd-arc-fill" d="M10 65 A55 55 0 0 1 110 65" stroke-dasharray="0 173"/>
+              </svg>
+              <div class="cd-score-label"><span id="cd-score">--</span><span class="cd-pct">%</span></div>
+              <div class="cd-risk-label" id="cd-risk-label">Risk</div>
+            </div>
+            <ul class="cd-factors" id="cd-factors"></ul>
+          </div>
+        </div>
+      </div>
+
       <!-- Skills constellation: hover a chip → matching project cards highlight,
            the rest dim. The mapping uses data-tags on each project-card above. -->
       <div class="skills-constellation reveal">
@@ -612,6 +646,56 @@
         <p class="section-sub">Long-form thoughts I'm putting on paper. Coming online in Phase 2.</p>
       </div>
 
+      <!-- Bookshelf (Feature 9) -->
+      <div class="bookshelf reveal">
+        <div class="bs-head">
+          <span class="bs-eyebrow">★ Bookshelf</span>
+          <p class="bs-sub">What I'm reading and the one line that stuck.</p>
+        </div>
+        <div class="bs-grid">
+          <article class="bs-book" style="--book-color:#1a3a5c">
+            <div class="bs-spine"></div>
+            <div class="bs-body">
+              <h4>Designing Data-Intensive Applications</h4>
+              <p class="bs-author">Martin Kleppmann</p>
+              <p class="bs-takeaway">"Consistency and consensus are not the same thing — most distributed systems trade one for the other."</p>
+            </div>
+          </article>
+          <article class="bs-book" style="--book-color:#2d1a4e">
+            <div class="bs-spine"></div>
+            <div class="bs-body">
+              <h4>The Algorithm Design Manual</h4>
+              <p class="bs-author">Steven Skiena</p>
+              <p class="bs-takeaway">"Every hard problem has been solved before in a slightly different shape — your job is pattern-matching."</p>
+            </div>
+          </article>
+          <article class="bs-book" style="--book-color:#1a3a2a">
+            <div class="bs-spine"></div>
+            <div class="bs-body">
+              <h4>Zero to One</h4>
+              <p class="bs-author">Peter Thiel</p>
+              <p class="bs-takeaway">"Competition is for losers. Find a monopoly by doing something no one else can replicate."</p>
+            </div>
+          </article>
+          <article class="bs-book" style="--book-color:#3a2a1a">
+            <div class="bs-spine"></div>
+            <div class="bs-body">
+              <h4>Thinking in Systems</h4>
+              <p class="bs-author">Donella Meadows</p>
+              <p class="bs-takeaway">"The most powerful leverage points in a system are the goals and the mindset from which they arose."</p>
+            </div>
+          </article>
+          <article class="bs-book" style="--book-color:#1a2a3a">
+            <div class="bs-spine"></div>
+            <div class="bs-body">
+              <h4>The Pragmatic Programmer</h4>
+              <p class="bs-author">Hunt &amp; Thomas</p>
+              <p class="bs-takeaway">"Don't live with broken windows. Fix bad design, wrong decisions, and poor code when you see them."</p>
+            </div>
+          </article>
+        </div>
+      </div>
+
       <div class="writing-grid">
         <article class="writing-card reveal">
           <span class="writing-tag">Engineering</span>
@@ -669,6 +753,37 @@
         </div>
       </article>
 
+      <!-- Recommendations carousel (Feature 10) -->
+      <div class="reco-section reveal">
+        <div class="reco-head">
+          <span class="reco-eyebrow">★ Recommendations</span>
+        </div>
+        <div class="reco-track" id="reco-track">
+          <article class="reco-card">
+            <p class="reco-quote">Mahir has an exceptional ability to translate complex data into actionable insight — rare at this stage of a career.</p>
+            <div class="reco-attribution">
+              <strong>Professor · Carnegie Mellon University</strong>
+              <span>Advanced Generative AI</span>
+            </div>
+          </article>
+          <article class="reco-card">
+            <p class="reco-quote">He led 85 volunteers across 14 schools without losing any of the warmth that makes TIDE's work resonate with students.</p>
+            <div class="reco-attribution">
+              <strong>TIDE Foundation Colleague</strong>
+              <span>Non-profit leadership · Ahmedabad</span>
+            </div>
+          </article>
+          <article class="reco-card">
+            <p class="reco-quote">Mahir reduced our query latency 35% in a single sprint. He's the kind of intern you'd fight to bring back full-time.</p>
+            <div class="reco-attribution">
+              <strong>Engineering Manager · Rapidops Inc.</strong>
+              <span>Data Analyst Internship</span>
+            </div>
+          </article>
+        </div>
+        <div class="reco-dots" id="reco-dots"></div>
+      </div>
+
       <!-- /now widget — update once every couple weeks -->
       <article class="now-card reveal" id="now-card">
         <div class="now-head">
@@ -709,7 +824,7 @@
       </div>
 
       <footer class="footer">
-        <span>© <span id="year"></span> Mahir Nagersheth · Built with Three.js · Pittsburgh → Dallas</span>
+        <span>© <button class="footer-year" id="footer-year" title="See changelog"><span id="year"></span></button> Mahir Nagersheth · Built with Three.js · Pittsburgh → Dallas</span>
       </footer>
     </section>
 
@@ -728,8 +843,84 @@
         <div class="cs-row"><dt><kbd>T</kbd></dt><dd>Toggle day / night mode</dd></div>
         <div class="cs-row"><dt><kbd>?</kbd></dt><dd>Open / close this cheatsheet</dd></div>
         <div class="cs-row"><dt><kbd>M</kbd></dt><dd>Mute / unmute ambient audio</dd></div>
+        <div class="cs-row"><dt><kbd>Space</kbd></dt><dd>Hold to auto-tour all 8 planets</dd></div>
+        <div class="cs-row"><dt><kbd>⌘K</kbd> / <kbd>Ctrl+K</kbd></dt><dd>Open search palette</dd></div>
       </dl>
       <p class="cs-tip">Tip · click the sun a few times. Just for the joy of it.</p>
+    </div>
+  </div>
+
+  <!-- Changelog modal (Feature 4) -->
+  <div class="changelog-modal" id="changelog-modal" role="dialog" aria-modal="true" aria-labelledby="cl-title" hidden>
+    <div class="cl-backdrop"></div>
+    <div class="cl-panel">
+      <button class="cl-close" id="cl-close" aria-label="Close changelog">×</button>
+      <h3 id="cl-title" class="cl-title">Changelog</h3>
+      <p class="cl-sub">This portfolio is a living document — actively maintained.</p>
+      <ol class="cl-timeline" reversed>
+        <li class="cl-entry">
+          <span class="cl-date">May 2026</span>
+          <strong>v2.0 — Full Feature Upgrade</strong>
+          <p>Tour mode, Ask Mahir AI widget, Cmd+K search, bookshelf, recommendations carousel, live credit risk demo, per-section OG cards, workspace overlays, micro-animations, YouTube inline player, and timezone-aware greeting.</p>
+        </li>
+        <li class="cl-entry">
+          <span class="cl-date">May 2026</span>
+          <strong>v1.1 — Real Photo + Live GitHub</strong>
+          <p>Added real headshot, live GitHub feed, PWA service worker, per-section deep links, and flight-path arc animations.</p>
+        </li>
+        <li class="cl-entry">
+          <span class="cl-date">May 2026</span>
+          <strong>v1.0 — Launch</strong>
+          <p>Three.js solar system, 8 planetary sections, procedural planet textures, day/night mode, keyboard shortcuts, ambient audio drone, and meteor shower easter egg.</p>
+        </li>
+      </ol>
+    </div>
+  </div>
+
+  <!-- YouTube inline modal (Feature 5) -->
+  <div class="yt-modal" id="yt-modal" hidden>
+    <div class="yt-modal-backdrop" id="yt-modal-backdrop"></div>
+    <div class="yt-modal-inner">
+      <button class="yt-modal-close" id="yt-modal-close" aria-label="Close video">×</button>
+      <iframe id="yt-modal-iframe" allow="autoplay; encrypted-media" allowfullscreen frameborder="0" title="YouTube video"></iframe>
+    </div>
+  </div>
+
+  <!-- Ask Mahir AI widget (Feature 6) -->
+  <button class="ask-bubble" id="ask-bubble" type="button" aria-label="Ask Mahir a question">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+    <span class="ask-label">Ask Mahir</span>
+  </button>
+  <div class="ask-panel" id="ask-panel" hidden role="dialog" aria-label="Ask Mahir AI chat">
+    <div class="ask-header">
+      <span>Ask Mahir</span>
+      <button class="ask-close" id="ask-close" type="button" aria-label="Close chat">×</button>
+    </div>
+    <div class="ask-messages" id="ask-messages" aria-live="polite">
+      <div class="ask-msg assistant">Hi! I'm an AI trained on Mahir's portfolio. Ask me about his work, skills, research, or why he plays piano at 2am.</div>
+    </div>
+    <div class="ask-input-row">
+      <input type="text" id="ask-input" class="ask-input" placeholder="Ask something…" maxlength="200" autocomplete="off">
+      <button class="ask-send" id="ask-send" type="button" aria-label="Send">→</button>
+    </div>
+    <p class="ask-disclaimer">Powered by Claude · <a href="https://github.com/MahirNagersheth/portfolio-3d-website#ask-mahir-setup" target="_blank" rel="noopener">Setup API key</a></p>
+  </div>
+
+  <!-- Cmd+K Search palette (Feature 11) -->
+  <div class="search-palette" id="search-palette" hidden role="dialog" aria-modal="true" aria-label="Search portfolio">
+    <div class="sp-backdrop"></div>
+    <div class="sp-panel">
+      <div class="sp-input-row">
+        <svg class="sp-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input id="sp-input" class="sp-input" type="text" placeholder="Search projects, skills, sections…" autocomplete="off" spellcheck="false" aria-label="Search query">
+        <kbd class="sp-esc">Esc</kbd>
+      </div>
+      <ul class="sp-results" id="sp-results" role="listbox"></ul>
+      <div class="sp-footer">
+        <span><kbd>↑</kbd><kbd>↓</kbd> navigate</span>
+        <span><kbd>↵</kbd> jump</span>
+        <span><kbd>Esc</kbd> close</span>
+      </div>
     </div>
   </div>
 
