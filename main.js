@@ -1483,7 +1483,7 @@ async function sendAskMessage() {
   }
   try {
     const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1496,8 +1496,14 @@ async function sendAskMessage() {
     );
     const data = await res.json();
     typing.remove();
+    if (!res.ok) {
+      console.error('[Ask Mahir] API error:', data);
+      appendAskMsg("Couldn't reach the AI right now — try emailing Mahir at mnagersh@andrew.cmu.edu", 'assistant');
+      return;
+    }
     appendAskMsg(data.candidates?.[0]?.content?.parts?.[0]?.text || "Couldn't reach the AI right now.", 'assistant');
-  } catch {
+  } catch (err) {
+    console.error('[Ask Mahir] fetch error:', err);
     typing.remove();
     appendAskMsg("Network error — try emailing Mahir at mnagersh@andrew.cmu.edu", 'assistant');
   }
