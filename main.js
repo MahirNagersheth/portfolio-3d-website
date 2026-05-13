@@ -2148,13 +2148,14 @@ if (_friendsSecEl) {
       const res = await fetch(workerUrl + '/spotify');
       if (!res.ok) return;
       const d = await res.json();
-      if (d.playing && d.track) {
+      if (d.track) {
         const art = document.getElementById('sp-art');
         art.src = d.albumArt || '';
         art.alt = d.album || '';
         document.getElementById('sp-track').textContent = d.track;
         document.getElementById('sp-artist').textContent = d.artist || '';
         document.getElementById('sp-link').href = d.url || '#';
+        card.dataset.paused = String(!d.playing);
         card.classList.remove('hidden');
       } else {
         card.classList.add('hidden');
