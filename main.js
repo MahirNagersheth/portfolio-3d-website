@@ -649,6 +649,7 @@ addEventListener('resize', onResize);
 onResize();
 
 // ---------- Render loop ----------
+let focusModeActive = false;
 const POS_LAMBDA = 1.7, LOOK_LAMBDA = 2.1, SCALE_LAMBDA = 6, ACT_LAMBDA = 3.5;
 const clock = new THREE.Clock(), tmpVec = new THREE.Vector3();
 
@@ -816,7 +817,6 @@ const yearEl = document.getElementById('year');
 if (yearEl) yearEl.textContent = new Date().getFullYear();
 
 // ---------- Day / night / focus theme ----------
-let focusModeActive = false;
 const THEME_KEY = 'mn-portfolio-theme';
 const DAY_STAR_COLOR    = new THREE.Color(0xffe0b0);
 const NIGHT_STAR_COLOR  = new THREE.Color(0xffffff);
