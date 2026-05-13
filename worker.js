@@ -1,6 +1,8 @@
-// Cloudflare Worker — Groq API proxy for mahir-portfolio
-// Deploy at: Workers & Pages → Create Worker → paste this → Deploy
-// Then: Settings → Variables → add GROQ_API_KEY (encrypted)
+// Cloudflare Worker — proxy for mahir-portfolio
+// Routes:
+//   POST /          → Groq API proxy (GROQ_API_KEY secret)
+//   GET  /spotify   → Spotify currently-playing (SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, SPOTIFY_REFRESH_TOKEN secrets)
+//   GET  /spotify/callback → one-time OAuth setup helper (open in browser to get refresh token)
 
 const ALLOWED_ORIGINS = [
   'https://mahirnagersheth.github.io',
@@ -10,23 +12,30 @@ const ALLOWED_ORIGINS = [
 
 export default {
   async fetch(request, env) {
+    const url = new URL(request.url);
+
+    // Spotify OAuth callback — called by Spotify redirect, no origin check needed
+    if (url.pathname === '/spotify/callback') {
+      return handleSpotifyCallback(request, env);
+    }
+
     const origin = request.headers.get('Origin') || '';
     const allowed = ALLOWED_ORIGINS.some(o => origin.startsWith(o));
-
     const corsHeaders = {
       'Access-Control-Allow-Origin': allowed ? origin : ALLOWED_ORIGINS[0],
-      'Access-Control-Allow-Methods': 'POST, OPTIONS',
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type',
     };
 
-    if (request.method === 'OPTIONS') {
-      return new Response(null, { headers: corsHeaders });
+    if (request.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
+    if (!allowed) return new Response('Forbidden', { status: 403, headers: corsHeaders });
+
+    // GET /spotify → currently playing
+    if (url.pathname === '/spotify' && request.method === 'GET') {
+      return handleSpotify(env, corsHeaders);
     }
 
-    if (!allowed) {
-      return new Response('Forbidden', { status: 403, headers: corsHeaders });
-    }
-
+    // POST / → Groq proxy
     if (request.method !== 'POST') {
       return new Response('Method not allowed', { status: 405, headers: corsHeaders });
     }
@@ -41,7 +50,6 @@ export default {
         },
         body: JSON.stringify(body),
       });
-
       const data = await res.json();
       return new Response(JSON.stringify(data), {
         status: res.status,
@@ -55,3 +63,72 @@ export default {
     }
   },
 };
+
+async function handleSpotify(env, corsHeaders) {
+  const json = s => new Response(JSON.stringify(s), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+
+  if (!env.SPOTIFY_CLIENT_ID || !env.SPOTIFY_REFRESH_TOKEN) return json({ playing: false });
+
+  try {
+    const tokenRes = await fetch('https://accounts.spotify.com/api/token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Authorization': 'Basic ' + btoa(`${env.SPOTIFY_CLIENT_ID}:${env.SPOTIFY_CLIENT_SECRET}`),
+      },
+      body: `grant_type=refresh_token&refresh_token=${encodeURIComponent(env.SPOTIFY_REFRESH_TOKEN)}`,
+    });
+    if (!tokenRes.ok) return json({ playing: false });
+
+    const { access_token } = await tokenRes.json();
+
+    const nowRes = await fetch('https://api.spotify.com/v1/me/player/currently-playing', {
+      headers: { 'Authorization': `Bearer ${access_token}` },
+    });
+
+    if (nowRes.status === 204 || !nowRes.ok) return json({ playing: false });
+
+    const d = await nowRes.json();
+    if (!d.item) return json({ playing: false });
+
+    return json({
+      playing: d.is_playing,
+      track:   d.item.name,
+      artist:  d.item.artists?.map(a => a.name).join(', '),
+      album:   d.item.album?.name,
+      albumArt: d.item.album?.images?.[1]?.url,
+      url:     d.item.external_urls?.spotify,
+    });
+  } catch {
+    return json({ playing: false });
+  }
+}
+
+async function handleSpotifyCallback(request, env) {
+  const txt = (s, status = 200) => new Response(s, { status, headers: { 'Content-Type': 'text/plain' } });
+  const url = new URL(request.url);
+  const code = url.searchParams.get('code');
+  const error = url.searchParams.get('error');
+
+  if (error) return txt(`Spotify auth error: ${error}`, 400);
+  if (!code)  return txt('No authorization code in URL', 400);
+
+  const REDIRECT_URI = 'https://mahir-portfolio-proxy.mnagersh.workers.dev/spotify/callback';
+
+  try {
+    const res = await fetch('https://accounts.spotify.com/api/token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Authorization': 'Basic ' + btoa(`${env.SPOTIFY_CLIENT_ID}:${env.SPOTIFY_CLIENT_SECRET}`),
+      },
+      body: `grant_type=authorization_code&code=${encodeURIComponent(code)}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}`,
+    });
+    const data = await res.json();
+    if (!data.refresh_token) return txt(`Token exchange failed:\n${JSON.stringify(data, null, 2)}`, 400);
+
+    return txt(`✅ Spotify connected!\n\nRefresh token:\n${data.refresh_token}\n\nAdd this as SPOTIFY_REFRESH_TOKEN in Cloudflare Worker Secrets, then close this tab.`);
+  } catch (err) {
+    return txt(`Error: ${err.message}`, 500);
+  }
+}

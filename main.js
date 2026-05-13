@@ -769,7 +769,7 @@ function animate() {
   }
 
   renderer.render(scene, camera);
-  requestAnimationFrame(animate);
+  if (!focusModeActive) requestAnimationFrame(animate);
 }
 animate();
 
@@ -815,7 +815,8 @@ document.querySelectorAll('[data-count]').forEach(el => counterObs.observe(el));
 const yearEl = document.getElementById('year');
 if (yearEl) yearEl.textContent = new Date().getFullYear();
 
-// ---------- Day / night theme ----------
+// ---------- Day / night / focus theme ----------
+let focusModeActive = false;
 const THEME_KEY = 'mn-portfolio-theme';
 const DAY_STAR_COLOR    = new THREE.Color(0xffe0b0);
 const NIGHT_STAR_COLOR  = new THREE.Color(0xffffff);
@@ -845,10 +846,17 @@ function updateSceneForTheme(theme) {
 }
 
 function applyTheme(theme) {
-  if (theme === 'day') document.body.setAttribute('data-theme', 'day');
+  const wasFocus = focusModeActive;
+  focusModeActive = (theme === 'focus');
+
+  if (theme === 'day' || theme === 'focus') document.body.setAttribute('data-theme', theme);
   else document.body.removeAttribute('data-theme');
+
   try { localStorage.setItem(THEME_KEY, theme); } catch (_) {}
   updateSceneForTheme(theme);
+
+  // Restart render loop when leaving focus mode
+  if (wasFocus && !focusModeActive) animate();
 }
 
 // First-visit theme: honour the user's OS preference (prefers-color-scheme)
@@ -860,8 +868,8 @@ const initialTheme = (() => {
 applyTheme(initialTheme);
 
 document.getElementById('theme-toggle')?.addEventListener('click', () => {
-  const cur = document.body.getAttribute('data-theme') === 'day' ? 'day' : 'night';
-  applyTheme(cur === 'day' ? 'night' : 'day');
+  const cur = document.body.getAttribute('data-theme') || 'night';
+  applyTheme(cur === 'night' ? 'day' : cur === 'day' ? 'focus' : 'night');
 });
 
 // ---------- Keyboard shortcuts ----------
@@ -2127,3 +2135,33 @@ if (_friendsSecEl) {
     }
   }, { threshold: 0.35 }).observe(_friendsSecEl);
 }
+
+// ---------- Spotify now-playing ----------
+(function () {
+  const workerUrl = window.ASK_WORKER_URL;
+  if (!workerUrl) return;
+  const card = document.getElementById('spotify-now');
+  if (!card) return;
+
+  async function fetchNow() {
+    try {
+      const res = await fetch(workerUrl + '/spotify');
+      if (!res.ok) return;
+      const d = await res.json();
+      if (d.playing && d.track) {
+        const art = document.getElementById('sp-art');
+        art.src = d.albumArt || '';
+        art.alt = d.album || '';
+        document.getElementById('sp-track').textContent = d.track;
+        document.getElementById('sp-artist').textContent = d.artist || '';
+        document.getElementById('sp-link').href = d.url || '#';
+        card.classList.remove('hidden');
+      } else {
+        card.classList.add('hidden');
+      }
+    } catch (_) {}
+  }
+
+  fetchNow();
+  setInterval(fetchNow, 30000);
+})();

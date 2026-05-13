@@ -98,8 +98,8 @@
       <!-- Keyboard shortcut help: press ? -->
       <button class="help-toggle" id="help-toggle" aria-label="Keyboard shortcuts" type="button" title="Keyboard shortcuts (?)">?</button>
 
-      <!-- Theme toggle: sun (currently in night → click to switch to day) / moon (currently in day → click to switch to night) -->
-      <button class="theme-toggle" id="theme-toggle" aria-label="Toggle day or night mode" type="button">
+      <!-- Theme toggle: cycles night → day → focus → night -->
+      <button class="theme-toggle" id="theme-toggle" aria-label="Toggle theme" type="button">
         <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <circle cx="12" cy="12" r="3.6" fill="currentColor" stroke="none"/>
           <path d="M12 3.2v2"/><path d="M12 18.8v2"/>
@@ -111,6 +111,10 @@
           <path d="M20 14.5A8 8 0 0 1 9.5 4 7 7 0 1 0 20 14.5z" fill="currentColor"/>
           <circle cx="17.5" cy="5.6" r="0.7" fill="currentColor" stroke="none"/>
           <circle cx="20.4" cy="8.6" r="0.45" fill="currentColor" stroke="none"/>
+        </svg>
+        <svg class="icon-focus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7z"/>
+          <circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/>
         </svg>
       </button>
 
@@ -606,6 +610,18 @@
         <span class="section-num">04</span>
         <h2 class="section-title">At the <span class="accent">Piano</span></h2>
         <p class="section-sub">A second language I think in. Selected performances.</p>
+      </div>
+
+      <div class="spotify-now hidden" id="spotify-now">
+        <a class="sp-card" id="sp-link" href="#" target="_blank" rel="noopener" aria-label="Open on Spotify">
+          <img class="sp-art" id="sp-art" src="" alt="" loading="lazy">
+          <div class="sp-info">
+            <span class="sp-eyebrow">♫ Now playing on Spotify</span>
+            <div class="sp-track" id="sp-track">—</div>
+            <div class="sp-artist" id="sp-artist">—</div>
+          </div>
+          <span class="sp-pulse" aria-hidden="true"></span>
+        </a>
       </div>
 
       <div class="piano-grid">
