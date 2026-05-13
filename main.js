@@ -2146,8 +2146,9 @@ if (_friendsSecEl) {
   async function fetchNow() {
     try {
       const res = await fetch(workerUrl + '/spotify');
-      if (!res.ok) return;
+      if (!res.ok) { console.warn('[Spotify] Worker responded', res.status); return; }
       const d = await res.json();
+      console.log('[Spotify]', d);
       if (d.track) {
         const art = document.getElementById('sp-art');
         art.src = d.albumArt || '';
