@@ -67,7 +67,7 @@ export default {
 async function handleSpotify(env, corsHeaders) {
   const json = s => new Response(JSON.stringify(s), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
-  if (!env.SPOTIFY_CLIENT_ID || !env.SPOTIFY_REFRESH_TOKEN) return json({ playing: false });
+  if (!env.SPOTIFY_CLIENT_ID || !env.SPOTIFY_REFRESH_TOKEN) return json({ playing: false, reason: 'no_secrets' });
 
   try {
     const tokenRes = await fetch('https://accounts.spotify.com/api/token', {
@@ -78,7 +78,10 @@ async function handleSpotify(env, corsHeaders) {
       },
       body: `grant_type=refresh_token&refresh_token=${encodeURIComponent(env.SPOTIFY_REFRESH_TOKEN)}`,
     });
-    if (!tokenRes.ok) return json({ playing: false });
+    if (!tokenRes.ok) {
+      const err = await tokenRes.text();
+      return json({ playing: false, reason: 'token_failed', status: tokenRes.status, detail: err });
+    }
 
     const { access_token } = await tokenRes.json();
 
@@ -86,10 +89,14 @@ async function handleSpotify(env, corsHeaders) {
       headers: { 'Authorization': `Bearer ${access_token}` },
     });
 
-    if (nowRes.status === 204 || !nowRes.ok) return json({ playing: false });
+    if (nowRes.status === 204) return json({ playing: false, reason: 'nothing_playing_204' });
+    if (!nowRes.ok) {
+      const err = await nowRes.text();
+      return json({ playing: false, reason: 'api_error', status: nowRes.status, detail: err });
+    }
 
     const d = await nowRes.json();
-    if (!d.item) return json({ playing: false });
+    if (!d.item) return json({ playing: false, reason: 'no_item' });
 
     return json({
       playing: d.is_playing,
@@ -99,8 +106,8 @@ async function handleSpotify(env, corsHeaders) {
       albumArt: d.item.album?.images?.[1]?.url,
       url:     d.item.external_urls?.spotify,
     });
-  } catch {
-    return json({ playing: false });
+  } catch (err) {
+    return json({ playing: false, reason: 'exception', detail: err.message });
   }
 }
 
