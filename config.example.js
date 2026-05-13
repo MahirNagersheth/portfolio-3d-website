@@ -1,6 +1,6 @@
 // Copy this file to config.js and fill in your real keys.
 // config.js is gitignored — never commit it.
-window.GROQ_API_KEY = 'gsk_...';   // optional: powers the "Ask Mahir" widget
+window.ASK_WORKER_URL = 'https://your-worker.your-subdomain.workers.dev';  // Cloudflare Worker proxy URL
 
 window.FIREBASE_CONFIG = {
   apiKey:            'AIza...',

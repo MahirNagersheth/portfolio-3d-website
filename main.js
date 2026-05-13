@@ -1475,19 +1475,16 @@ async function sendAskMessage() {
   askMessages?.appendChild(typing);
   if (askMessages) askMessages.scrollTop = askMessages.scrollHeight;
 
-  const apiKey = window.GROQ_API_KEY;
-  if (!apiKey) {
+  const workerUrl = window.ASK_WORKER_URL;
+  if (!workerUrl) {
     typing.remove();
     appendAskMsg("AI responses aren't configured yet — reach Mahir directly at mnagersh@andrew.cmu.edu!", 'assistant');
     return;
   }
   try {
-    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    const res = await fetch(workerUrl, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: 'llama-3.1-8b-instant',
         messages: [
