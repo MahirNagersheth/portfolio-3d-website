@@ -509,11 +509,40 @@
           </div>
         </article>
 
-        <article class="project-card reveal" data-tags="python ml xgboost streamlit web-app">
+        <article class="project-card reveal" data-tags="python ml xgboost streamlit web-app" style="grid-column: 1 / -1">
           <span class="project-tag">Deployed App</span>
           <h3>Credit Risk Prediction App</h3>
           <p>Tree-based classifiers (DT, RF, ExtraTrees, XGBoost) tuned with GridSearchCV, with EDA + feature engineering for class imbalance. Streamlit front-end.</p>
           <div class="project-stack"><span>XGBoost</span><span>Streamlit</span><span>scikit-learn</span></div>
+          <div class="cr-demo-section">
+            <span class="cd-eyebrow">★ Live Demo · Try the Model</span>
+            <p class="cr-demo-sub">Adjust the inputs — the risk score updates in real time. Runs entirely in your browser using the same feature set as the Streamlit app.</p>
+            <div class="cd-layout">
+              <div class="cd-inputs">
+                <label><span>Annual Income <strong id="cd-income-val">$65,000</strong></span>
+                  <input type="range" id="cd-income" min="20000" max="200000" step="1000" value="65000"></label>
+                <label><span>Loan Amount <strong id="cd-loan-val">$15,000</strong></span>
+                  <input type="range" id="cd-loan" min="1000" max="50000" step="500" value="15000"></label>
+                <label><span>Employment Length <strong id="cd-emp-val">5 yrs</strong></span>
+                  <input type="range" id="cd-emp" min="0" max="30" step="1" value="5"></label>
+                <label><span>Debt-to-Income Ratio <strong id="cd-dti-val">0.25</strong></span>
+                  <input type="range" id="cd-dti" min="0" max="1" step="0.01" value="0.25"></label>
+                <label><span>Credit History Length <strong id="cd-hist-val">7 yrs</strong></span>
+                  <input type="range" id="cd-hist" min="0" max="30" step="1" value="7"></label>
+              </div>
+              <div class="cd-output">
+                <div class="cd-gauge">
+                  <svg viewBox="0 0 120 70" class="cd-arc">
+                    <path class="cd-arc-bg" d="M10 65 A55 55 0 0 1 110 65"/>
+                    <path class="cd-arc-fill" id="cd-arc-fill" d="M10 65 A55 55 0 0 1 110 65" stroke-dasharray="0 173"/>
+                  </svg>
+                  <div class="cd-score-label"><span id="cd-score">--</span><span class="cd-pct">%</span></div>
+                </div>
+                <div class="cd-risk-label" id="cd-risk-label">Risk</div>
+                <ul class="cd-factors" id="cd-factors"></ul>
+              </div>
+            </div>
+          </div>
         </article>
 
         <article class="project-card reveal" data-tags="python sql analytics pandas beautifulsoup">
@@ -538,40 +567,6 @@
         </article>
 
 
-      </div>
-
-      <!-- Live Credit Risk Playground (Feature 7) -->
-      <div class="credit-demo reveal" id="credit-demo">
-        <div class="cd-head">
-          <span class="cd-eyebrow">★ Live Demo · Credit Risk Predictor</span>
-          <h3>Try the Model</h3>
-          <p>Adjust the inputs — the risk score updates in real time. Runs entirely in your browser using the same feature set as the Streamlit app.</p>
-        </div>
-        <div class="cd-layout">
-          <div class="cd-inputs">
-            <label><span>Annual Income <strong id="cd-income-val">$65,000</strong></span>
-              <input type="range" id="cd-income" min="20000" max="200000" step="1000" value="65000"></label>
-            <label><span>Loan Amount <strong id="cd-loan-val">$15,000</strong></span>
-              <input type="range" id="cd-loan" min="1000" max="50000" step="500" value="15000"></label>
-            <label><span>Employment Length <strong id="cd-emp-val">5 yrs</strong></span>
-              <input type="range" id="cd-emp" min="0" max="30" step="1" value="5"></label>
-            <label><span>Debt-to-Income Ratio <strong id="cd-dti-val">0.25</strong></span>
-              <input type="range" id="cd-dti" min="0" max="1" step="0.01" value="0.25"></label>
-            <label><span>Credit History Length <strong id="cd-hist-val">7 yrs</strong></span>
-              <input type="range" id="cd-hist" min="0" max="30" step="1" value="7"></label>
-          </div>
-          <div class="cd-output">
-            <div class="cd-gauge">
-              <svg viewBox="0 0 120 70" class="cd-arc">
-                <path class="cd-arc-bg" d="M10 65 A55 55 0 0 1 110 65"/>
-                <path class="cd-arc-fill" id="cd-arc-fill" d="M10 65 A55 55 0 0 1 110 65" stroke-dasharray="0 173"/>
-              </svg>
-              <div class="cd-score-label"><span id="cd-score">--</span><span class="cd-pct">%</span></div>
-              <div class="cd-risk-label" id="cd-risk-label">Risk</div>
-            </div>
-            <ul class="cd-factors" id="cd-factors"></ul>
-          </div>
-        </div>
       </div>
 
       <!-- Skills constellation: hover a chip → matching project cards highlight,
@@ -603,16 +598,6 @@
         </div>
       </div>
 
-      <!-- Live from GitHub — populated by JS once the username is set in main.js -->
-      <div class="github-feed" id="github-feed">
-        <div class="gh-head">
-          <span class="gh-eye">★ Live from GitHub</span>
-          <span class="gh-handle" id="gh-handle">@mahir-nagersheth</span>
-        </div>
-        <div class="gh-body" id="gh-body">
-          <p class="gh-empty">Set your GitHub username in <code>main.js</code> (<code>GITHUB_USERNAME</code>) and the six most-recently-updated public repos will appear here automatically.</p>
-        </div>
-      </div>
     </section>
 
     <!-- PIANO -->
