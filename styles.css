@@ -774,9 +774,47 @@ main { width: 100%; }
   letter-spacing: 0.2em;
   text-transform: uppercase;
   color: var(--fg-faint);
-  margin: 0 0 0.75rem;
+  margin: 0;
 }
-.course-semesters { display: flex; flex-direction: column; gap: 1.1rem; margin-bottom: 1.5rem; }
+/* Collapsible coursework toggle */
+.course-toggle { border: none; }
+.course-toggle > summary {
+  list-style: none;
+  cursor: pointer;
+}
+.course-toggle > summary::-webkit-details-marker { display: none; }
+.course-toggle-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.6rem;
+}
+.course-toggle-hint {
+  font-size: 0.72rem;
+  color: var(--accent-soft);
+  letter-spacing: 0.05em;
+  transition: opacity 0.2s;
+}
+.course-toggle[open] .course-toggle-hint { opacity: 0; pointer-events: none; }
+.course-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 0;
+}
+.course-more-badge {
+  padding: 0.18rem 0.55rem;
+  font-size: 0.72rem;
+  border-radius: 999px;
+  background: rgba(196,30,58,0.08);
+  border: 1px solid rgba(196,30,58,0.25);
+  color: var(--accent-soft);
+  font-family: var(--font-display);
+}
+.course-toggle[open] .course-preview { display: none; }
+.course-toggle > .course-semesters,
+.course-toggle > div > .course-semesters { margin-top: 0; }
+.course-semesters { display: flex; flex-direction: column; gap: 1.1rem; margin-top: 1rem; margin-bottom: 0; }
 .course-sem-group { display: flex; flex-direction: column; gap: 0.45rem; }
 .course-sem-label {
   font-size: 0.68rem;
