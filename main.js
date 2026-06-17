@@ -1111,87 +1111,141 @@ addEventListener('keydown', e => {
 });
 
 // ============================================================
-//  Ambient audio — "Interstellar"-styled drone: a low open organ
-//  chord with slow swells, plus a soft ticking-clock pulse.
-//  Fully synthesized (Web Audio API), no audio files. Muted by
-//  default. Toggle via the nav button or `M`.
+//  Ambient audio — a piano arpeggio rendering of "No Time for
+//  Caution" (Interstellar): a relentless rising arpeggio ostinato
+//  cycling Am–F–C–G with sus/add colour, a low sustaining pad,
+//  and the signature ticking-clock pulse on top. Fully synthesized
+//  via the Web Audio API (no audio files). Muted by default —
+//  toggle with the nav button or `M`.
 // ============================================================
 const audioBtn = document.getElementById('audio-toggle');
-let audioCtx = null, audioGain = null, tickGain = null, audioNodes = [], tickInterval = null;
+let audioCtx = null, pianoGain = null, padGain = null, tickGain = null;
+let padRoot = null, padFifth = null;
+let seqIndex = 0, seqNextTime = 0, seqTimer = null, tickTimer = null;
+
+// 32-step loop, 4 bars of 8 eighth-notes. Each bar is one chord,
+// arpeggiated up twice — the driving ostinato that carries the cue.
+const STEP = 0.25; // eighth-note ≈ 120 bpm
+const N = {        // pitches (Hz)
+  F3: 174.61, G3: 196.00, A3: 220.00, B3: 246.94,
+  C4: 261.63, D4: 293.66, E4: 329.63, F4: 349.23, G4: 392.00,
+  A4: 440.00, B4: 493.88, C5: 523.25, D5: 587.33, E5: 659.25, G5: 783.99,
+};
+const ARP = [
+  N.A3, N.C4, N.E4, N.B4, N.A3, N.C4, N.E4, N.B4,   // Am(add9)
+  N.F3, N.A3, N.C4, N.E4, N.F3, N.A3, N.C4, N.E4,   // Fmaj9
+  N.C4, N.E4, N.G4, N.D5, N.C4, N.E4, N.G4, N.D5,   // Cadd9
+  N.G3, N.B3, N.D4, N.A4, N.G3, N.B3, N.D4, N.A4,   // Gadd9
+];
+// Low pad root + fifth per bar (Am, F, C, G)
+const PAD = [
+  { root: 110.00, fifth: 164.81 }, // A2 + E3
+  { root:  87.31, fifth: 130.81 }, // F2 + C3
+  { root: 130.81, fifth: 196.00 }, // C3 + G3
+  { root:  98.00, fifth: 146.83 }, // G2 + D3
+];
+
 function ensureAudio() {
   if (audioCtx) return;
   audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  audioGain = audioCtx.createGain();
-  audioGain.gain.value = 0;
-  // Warm low-pass — reads as organ rather than a bright synth pad
-  const lp = audioCtx.createBiquadFilter();
-  lp.type = 'lowpass';
-  lp.frequency.value = 480;
-  audioGain.connect(lp);
-  lp.connect(audioCtx.destination);
 
-  // Tick bypasses the low-pass so the click stays crisp against the chord
+  // Piano arpeggio bus — light touch, no heavy filtering so notes ring
+  pianoGain = audioCtx.createGain();
+  pianoGain.gain.value = 0;
+  pianoGain.connect(audioCtx.destination);
+
+  // Pad bus — warm low-pass so the sustained root reads as organ/strings
+  padGain = audioCtx.createGain();
+  padGain.gain.value = 0;
+  const padLp = audioCtx.createBiquadFilter();
+  padLp.type = 'lowpass';
+  padLp.frequency.value = 420;
+  padGain.connect(padLp);
+  padLp.connect(audioCtx.destination);
+
+  // Tick bus — bypasses the low-pass so the clock stays crisp
   tickGain = audioCtx.createGain();
   tickGain.gain.value = 0;
   tickGain.connect(audioCtx.destination);
 
-  // Low open chord — root, fifth, octave, octave+fifth (A1 E2 A2 E3).
-  // Each note gets a fundamental + a quiet overtone so it reads as
-  // organ rather than a single pure tone.
-  [55, 82.5, 110, 165].forEach((freq, i) => {
-    [1, 2].forEach((harmonic, h) => {
-      const osc = audioCtx.createOscillator();
-      osc.type = h === 0 ? 'sine' : 'triangle';
-      osc.frequency.value = freq * harmonic;
-      const oscGain = audioCtx.createGain();
-      const baseVol = (h === 0 ? 0.3 : 0.08) / (i + 1);
-      oscGain.gain.value = baseVol;
-      // Slow LFO swell — organ "breathing" rather than a fast tremolo
-      const lfo = audioCtx.createOscillator();
-      const lfoGain = audioCtx.createGain();
-      lfo.frequency.value = 0.035 + i * 0.012;
-      lfoGain.gain.value = baseVol * 0.4;
-      lfo.connect(lfoGain);
-      lfoGain.connect(oscGain.gain);
-      lfo.start();
-      osc.connect(oscGain);
-      oscGain.connect(audioGain);
-      osc.start();
-      audioNodes.push(osc, lfo);
-    });
-  });
+  // Two continuously-running pad oscillators, retuned at each bar
+  padRoot  = audioCtx.createOscillator(); padRoot.type  = 'sine';
+  padFifth = audioCtx.createOscillator(); padFifth.type = 'triangle';
+  const rootG = audioCtx.createGain(); rootG.gain.value = 0.5;
+  const fifthG = audioCtx.createGain(); fifthG.gain.value = 0.22;
+  padRoot.frequency.value  = PAD[0].root;
+  padFifth.frequency.value = PAD[0].fifth;
+  padRoot.connect(rootG);  rootG.connect(padGain);
+  padFifth.connect(fifthG); fifthG.connect(padGain);
+  padRoot.start(); padFifth.start();
 
-  // Soft ticking-clock pulse — the Interstellar signature, sitting
-  // quietly underneath the chord.
+  // One arpeggio note: additive piano-ish tone with a percussive decay
+  function playPiano(freq, time) {
+    const env = audioCtx.createGain();
+    env.gain.setValueAtTime(0.0001, time);
+    env.gain.exponentialRampToValueAtTime(0.9, time + 0.006);
+    env.gain.exponentialRampToValueAtTime(0.0001, time + 1.4);
+    env.connect(pianoGain);
+    [[freq, 'sine', 1], [freq * 2, 'sine', 0.4], [freq * 3, 'sine', 0.12], [freq, 'triangle', 0.22]]
+      .forEach(([f, type, g]) => {
+        const o = audioCtx.createOscillator(); o.type = type; o.frequency.value = f;
+        const og = audioCtx.createGain(); og.gain.value = g;
+        o.connect(og); og.connect(env);
+        o.start(time); o.stop(time + 1.6);
+      });
+  }
+
+  // Lookahead scheduler — queue notes slightly ahead of the audio clock
+  // so timing stays rock-steady regardless of setInterval jitter.
+  function scheduler() {
+    while (seqNextTime < audioCtx.currentTime + 0.12) {
+      playPiano(ARP[seqIndex % ARP.length], seqNextTime);
+      // Retune the pad at each bar boundary (every 8 steps)
+      if (seqIndex % 8 === 0) {
+        const bar = PAD[(seqIndex / 8) % PAD.length];
+        padRoot.frequency.setTargetAtTime(bar.root, seqNextTime, 0.05);
+        padFifth.frequency.setTargetAtTime(bar.fifth, seqNextTime, 0.05);
+      }
+      seqIndex++;
+      seqNextTime += STEP;
+    }
+  }
+  seqNextTime = audioCtx.currentTime + 0.1;
+  seqTimer = setInterval(scheduler, 25);
+
+  // Ticking-clock pulse — the cue's signature, two ticks per bar
   function tick() {
     const t = audioCtx.currentTime;
     const click = audioCtx.createOscillator();
     click.type = 'sine';
-    click.frequency.value = 1400;
+    click.frequency.value = 1500;
     const clickEnv = audioCtx.createGain();
     clickEnv.gain.setValueAtTime(0, t);
     clickEnv.gain.linearRampToValueAtTime(1, t + 0.004);
-    clickEnv.gain.exponentialRampToValueAtTime(0.0001, t + 0.08);
+    clickEnv.gain.exponentialRampToValueAtTime(0.0001, t + 0.07);
     click.connect(clickEnv);
     clickEnv.connect(tickGain);
     click.start(t);
-    click.stop(t + 0.1);
+    click.stop(t + 0.09);
   }
-  tickInterval = setInterval(tick, 1000);
+  tickTimer = setInterval(tick, 1000);
 }
+
 audioBtn?.addEventListener('click', () => {
   ensureAudio();
   const on = audioBtn.getAttribute('aria-pressed') === 'true';
   audioBtn.setAttribute('aria-pressed', String(!on));
   if (audioCtx.state === 'suspended') audioCtx.resume();
-  // Smooth fade — never click on/off
+  // Smooth fades — never click on/off
   const now = audioCtx.currentTime;
-  audioGain.gain.cancelScheduledValues(now);
-  audioGain.gain.setValueAtTime(audioGain.gain.value, now);
-  audioGain.gain.linearRampToValueAtTime(on ? 0 : 0.16, now + 1.6);
-  tickGain.gain.cancelScheduledValues(now);
-  tickGain.gain.setValueAtTime(tickGain.gain.value, now);
-  tickGain.gain.linearRampToValueAtTime(on ? 0 : 0.025, now + 1.6);
+  const ramp = (node, target) => {
+    node.gain.cancelScheduledValues(now);
+    node.gain.setValueAtTime(node.gain.value, now);
+    node.gain.linearRampToValueAtTime(target, now + 1.4);
+  };
+  ramp(pianoGain, on ? 0 : 0.14);
+  ramp(padGain,   on ? 0 : 0.10);
+  ramp(tickGain,  on ? 0 : 0.022);
 });
 
 // Skills constellation — hover-to-highlight related projects
