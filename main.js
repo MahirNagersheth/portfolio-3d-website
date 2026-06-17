@@ -1111,42 +1111,73 @@ addEventListener('keydown', e => {
 });
 
 // ============================================================
-//  Ambient audio — Web Audio API drone with low-pass filter.
-//  Muted by default. Toggle via the nav button or `M`.
+//  Ambient audio — "Interstellar"-styled drone: a low open organ
+//  chord with slow swells, plus a soft ticking-clock pulse.
+//  Fully synthesized (Web Audio API), no audio files. Muted by
+//  default. Toggle via the nav button or `M`.
 // ============================================================
 const audioBtn = document.getElementById('audio-toggle');
-let audioCtx = null, audioGain = null, audioNodes = [];
+let audioCtx = null, audioGain = null, tickGain = null, audioNodes = [], tickInterval = null;
 function ensureAudio() {
   if (audioCtx) return;
   audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   audioGain = audioCtx.createGain();
   audioGain.gain.value = 0;
-  // Soft low-pass for warmth
+  // Warm low-pass — reads as organ rather than a bright synth pad
   const lp = audioCtx.createBiquadFilter();
   lp.type = 'lowpass';
-  lp.frequency.value = 600;
+  lp.frequency.value = 480;
   audioGain.connect(lp);
   lp.connect(audioCtx.destination);
-  // Three detuned drone oscillators — gentle cosmic chord
-  [110, 165, 220].forEach((freq, i) => {
-    const osc = audioCtx.createOscillator();
-    osc.type = i === 0 ? 'sine' : 'triangle';
-    osc.frequency.value = freq;
-    const oscGain = audioCtx.createGain();
-    oscGain.gain.value = i === 0 ? 0.35 : 0.22;
-    // Slow LFO on each oscillator's volume for breath
-    const lfo = audioCtx.createOscillator();
-    const lfoGain = audioCtx.createGain();
-    lfo.frequency.value = 0.07 + i * 0.04;
-    lfoGain.gain.value = 0.08;
-    lfo.connect(lfoGain);
-    lfoGain.connect(oscGain.gain);
-    lfo.start();
-    osc.connect(oscGain);
-    oscGain.connect(audioGain);
-    osc.start();
-    audioNodes.push(osc, lfo);
+
+  // Tick bypasses the low-pass so the click stays crisp against the chord
+  tickGain = audioCtx.createGain();
+  tickGain.gain.value = 0;
+  tickGain.connect(audioCtx.destination);
+
+  // Low open chord — root, fifth, octave, octave+fifth (A1 E2 A2 E3).
+  // Each note gets a fundamental + a quiet overtone so it reads as
+  // organ rather than a single pure tone.
+  [55, 82.5, 110, 165].forEach((freq, i) => {
+    [1, 2].forEach((harmonic, h) => {
+      const osc = audioCtx.createOscillator();
+      osc.type = h === 0 ? 'sine' : 'triangle';
+      osc.frequency.value = freq * harmonic;
+      const oscGain = audioCtx.createGain();
+      const baseVol = (h === 0 ? 0.3 : 0.08) / (i + 1);
+      oscGain.gain.value = baseVol;
+      // Slow LFO swell — organ "breathing" rather than a fast tremolo
+      const lfo = audioCtx.createOscillator();
+      const lfoGain = audioCtx.createGain();
+      lfo.frequency.value = 0.035 + i * 0.012;
+      lfoGain.gain.value = baseVol * 0.4;
+      lfo.connect(lfoGain);
+      lfoGain.connect(oscGain.gain);
+      lfo.start();
+      osc.connect(oscGain);
+      oscGain.connect(audioGain);
+      osc.start();
+      audioNodes.push(osc, lfo);
+    });
   });
+
+  // Soft ticking-clock pulse — the Interstellar signature, sitting
+  // quietly underneath the chord.
+  function tick() {
+    const t = audioCtx.currentTime;
+    const click = audioCtx.createOscillator();
+    click.type = 'sine';
+    click.frequency.value = 1400;
+    const clickEnv = audioCtx.createGain();
+    clickEnv.gain.setValueAtTime(0, t);
+    clickEnv.gain.linearRampToValueAtTime(1, t + 0.004);
+    clickEnv.gain.exponentialRampToValueAtTime(0.0001, t + 0.08);
+    click.connect(clickEnv);
+    clickEnv.connect(tickGain);
+    click.start(t);
+    click.stop(t + 0.1);
+  }
+  tickInterval = setInterval(tick, 1000);
 }
 audioBtn?.addEventListener('click', () => {
   ensureAudio();
@@ -1157,7 +1188,10 @@ audioBtn?.addEventListener('click', () => {
   const now = audioCtx.currentTime;
   audioGain.gain.cancelScheduledValues(now);
   audioGain.gain.setValueAtTime(audioGain.gain.value, now);
-  audioGain.gain.linearRampToValueAtTime(on ? 0 : 0.18, now + 1.2);
+  audioGain.gain.linearRampToValueAtTime(on ? 0 : 0.16, now + 1.6);
+  tickGain.gain.cancelScheduledValues(now);
+  tickGain.gain.setValueAtTime(tickGain.gain.value, now);
+  tickGain.gain.linearRampToValueAtTime(on ? 0 : 0.025, now + 1.6);
 });
 
 // Skills constellation — hover-to-highlight related projects
