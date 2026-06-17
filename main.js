@@ -1111,100 +1111,148 @@ addEventListener('keydown', e => {
 });
 
 // ============================================================
-//  Ambient audio — a piano arpeggio rendering of "No Time for
-//  Caution" (Interstellar): a relentless rising arpeggio ostinato
-//  cycling Am–F–C–G with sus/add colour, a low sustaining pad,
-//  and the signature ticking-clock pulse on top. Fully synthesized
-//  via the Web Audio API (no audio files). Muted by default —
-//  toggle with the nav button or `M`.
+//  Ambient audio — an orchestral rendering of "No Time for
+//  Caution" (Interstellar): an open 1-5-8-10 arpeggio ostinato
+//  cycling Am–F–C–G (the theme's recognizable progression) played
+//  by a detuned string/brass ensemble, over low sustaining strings,
+//  with a convolution-reverb hall, a slow building swell each cycle,
+//  and the signature ticking-clock pulse. Fully synthesized via the
+//  Web Audio API (no audio files). Muted by default — toggle with
+//  the nav button or `M`.
 // ============================================================
 const audioBtn = document.getElementById('audio-toggle');
-let audioCtx = null, pianoGain = null, padGain = null, tickGain = null;
-let padRoot = null, padFifth = null;
+let audioCtx = null, masterEnv = null, dryBus = null, reverb = null;
+let padRoot = null, padFifth = null, padOct = null;
 let seqIndex = 0, seqNextTime = 0, seqTimer = null, tickTimer = null;
 
-// 32-step loop, 4 bars of 8 eighth-notes. Each bar is one chord,
-// arpeggiated up twice — the driving ostinato that carries the cue.
-const STEP = 0.25; // eighth-note ≈ 120 bpm
-const N = {        // pitches (Hz)
-  F3: 174.61, G3: 196.00, A3: 220.00, B3: 246.94,
-  C4: 261.63, D4: 293.66, E4: 329.63, F4: 349.23, G4: 392.00,
-  A4: 440.00, B4: 493.88, C5: 523.25, D5: 587.33, E5: 659.25, G5: 783.99,
-};
+// 24-step loop: 4 chords × 6 notes. Open voicing (root-5th-octave-
+// 10th, up and back) — the soaring, hollow arpeggio that defines the
+// Interstellar ostinato.
+const STEP = 0.20; // driving eighth/triplet feel
 const ARP = [
-  N.A3, N.C4, N.E4, N.B4, N.A3, N.C4, N.E4, N.B4,   // Am(add9)
-  N.F3, N.A3, N.C4, N.E4, N.F3, N.A3, N.C4, N.E4,   // Fmaj9
-  N.C4, N.E4, N.G4, N.D5, N.C4, N.E4, N.G4, N.D5,   // Cadd9
-  N.G3, N.B3, N.D4, N.A4, N.G3, N.B3, N.D4, N.A4,   // Gadd9
+  220.00, 329.63, 440.00, 523.25, 440.00, 329.63,   // Am  (A3 E4 A4 C5)
+  174.61, 261.63, 349.23, 440.00, 349.23, 261.63,   // F   (F3 C4 F4 A4)
+  261.63, 392.00, 523.25, 659.25, 523.25, 392.00,   // C   (C4 G4 C5 E5)
+  196.00, 293.66, 392.00, 493.88, 392.00, 293.66,   // G   (G3 D4 G4 B4)
 ];
-// Low pad root + fifth per bar (Am, F, C, G)
+const NOTES_PER_CHORD = 6;
+// Low sustaining strings: root, fifth, octave per chord
 const PAD = [
-  { root: 110.00, fifth: 164.81 }, // A2 + E3
-  { root:  87.31, fifth: 130.81 }, // F2 + C3
-  { root: 130.81, fifth: 196.00 }, // C3 + G3
-  { root:  98.00, fifth: 146.83 }, // G2 + D3
+  { root: 110.00, fifth: 164.81, oct: 220.00 }, // Am
+  { root:  87.31, fifth: 130.81, oct: 174.61 }, // F
+  { root: 130.81, fifth: 196.00, oct: 261.63 }, // C
+  { root:  98.00, fifth: 146.83, oct: 196.00 }, // G
+];
+// Brass swell chord (root, fifth, octave) per chord — enters in the
+// back half of each cycle for the lift
+const BRASS = [
+  [220.00, 329.63, 440.00], // Am
+  [174.61, 261.63, 349.23], // F
+  [261.63, 392.00, 523.25], // C
+  [196.00, 293.66, 392.00], // G
 ];
 
 function ensureAudio() {
   if (audioCtx) return;
   audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
-  // Piano arpeggio bus — light touch, no heavy filtering so notes ring
-  pianoGain = audioCtx.createGain();
-  pianoGain.gain.value = 0;
-  pianoGain.connect(audioCtx.destination);
+  // Master chain: everything → masterEnv (fade) → compressor → out
+  const comp = audioCtx.createDynamicsCompressor();
+  comp.threshold.value = -18; comp.ratio.value = 3;
+  comp.attack.value = 0.005; comp.release.value = 0.25;
+  masterEnv = audioCtx.createGain();
+  masterEnv.gain.value = 0;
+  masterEnv.connect(comp);
+  comp.connect(audioCtx.destination);
 
-  // Pad bus — warm low-pass so the sustained root reads as organ/strings
-  padGain = audioCtx.createGain();
-  padGain.gain.value = 0;
+  // Dry + reverb (wet) sub-buses both feed the master fade
+  dryBus = audioCtx.createGain(); dryBus.gain.value = 1.0;
+  dryBus.connect(masterEnv);
+  const wetBus = audioCtx.createGain(); wetBus.gain.value = 0.6;
+  reverb = audioCtx.createConvolver();
+  reverb.buffer = makeImpulse(2.6, 2.4);
+  reverb.connect(wetBus);
+  wetBus.connect(masterEnv);
+  // Route a voice to both dry and reverb
+  const out = node => { node.connect(dryBus); node.connect(reverb); };
+
+  // ── Low sustaining strings (continuous, retuned per chord) ──
+  const padBus = audioCtx.createGain(); padBus.gain.value = 0.085;
   const padLp = audioCtx.createBiquadFilter();
-  padLp.type = 'lowpass';
-  padLp.frequency.value = 420;
-  padGain.connect(padLp);
-  padLp.connect(audioCtx.destination);
-
-  // Tick bus — bypasses the low-pass so the clock stays crisp
-  tickGain = audioCtx.createGain();
-  tickGain.gain.value = 0;
-  tickGain.connect(audioCtx.destination);
-
-  // Two continuously-running pad oscillators, retuned at each bar
-  padRoot  = audioCtx.createOscillator(); padRoot.type  = 'sine';
-  padFifth = audioCtx.createOscillator(); padFifth.type = 'triangle';
-  const rootG = audioCtx.createGain(); rootG.gain.value = 0.5;
-  const fifthG = audioCtx.createGain(); fifthG.gain.value = 0.22;
-  padRoot.frequency.value  = PAD[0].root;
+  padLp.type = 'lowpass'; padLp.frequency.value = 700;
+  padBus.connect(padLp); out(padLp);
+  const mkPad = (type, g) => {
+    const o = audioCtx.createOscillator(); o.type = type;
+    const og = audioCtx.createGain(); og.gain.value = g;
+    o.connect(og); og.connect(padBus); o.start();
+    return o;
+  };
+  padRoot  = mkPad('sawtooth', 0.4);
+  padFifth = mkPad('sawtooth', 0.22);
+  padOct   = mkPad('triangle', 0.18);
+  padRoot.frequency.value = PAD[0].root;
   padFifth.frequency.value = PAD[0].fifth;
-  padRoot.connect(rootG);  rootG.connect(padGain);
-  padFifth.connect(fifthG); fifthG.connect(padGain);
-  padRoot.start(); padFifth.start();
+  padOct.frequency.value = PAD[0].oct;
 
-  // One arpeggio note: additive piano-ish tone with a percussive decay
-  function playPiano(freq, time) {
+  // ── Orchestral arpeggio voice: detuned string-section pluck ──
+  function playArp(freq, time, vel) {
     const env = audioCtx.createGain();
     env.gain.setValueAtTime(0.0001, time);
-    env.gain.exponentialRampToValueAtTime(0.9, time + 0.006);
-    env.gain.exponentialRampToValueAtTime(0.0001, time + 1.4);
-    env.connect(pianoGain);
-    [[freq, 'sine', 1], [freq * 2, 'sine', 0.4], [freq * 3, 'sine', 0.12], [freq, 'triangle', 0.22]]
-      .forEach(([f, type, g]) => {
-        const o = audioCtx.createOscillator(); o.type = type; o.frequency.value = f;
-        const og = audioCtx.createGain(); og.gain.value = g;
-        o.connect(og); og.connect(env);
-        o.start(time); o.stop(time + 1.6);
-      });
+    env.gain.exponentialRampToValueAtTime(0.18 * vel, time + 0.03);
+    env.gain.exponentialRampToValueAtTime(0.0001, time + 1.3);
+    const lp = audioCtx.createBiquadFilter();
+    lp.type = 'lowpass'; lp.frequency.value = 2600;
+    env.connect(lp); out(lp);
+    [-7, 0, 7].forEach(cents => {  // 3-voice unison for ensemble width
+      const o = audioCtx.createOscillator();
+      o.type = 'sawtooth'; o.frequency.value = freq;
+      o.detune.value = cents;
+      const og = audioCtx.createGain(); og.gain.value = 0.33;
+      o.connect(og); og.connect(env);
+      o.start(time); o.stop(time + 1.5);
+    });
   }
 
-  // Lookahead scheduler — queue notes slightly ahead of the audio clock
-  // so timing stays rock-steady regardless of setInterval jitter.
+  // ── Brass swell chord: stacked saw/square, filter opens on attack ──
+  function playBrass(freqs, time, dur, vel) {
+    const env = audioCtx.createGain();
+    env.gain.setValueAtTime(0.0001, time);
+    env.gain.linearRampToValueAtTime(0.05 * vel, time + 0.35);
+    env.gain.setValueAtTime(0.05 * vel, time + dur - 0.3);
+    env.gain.exponentialRampToValueAtTime(0.0001, time + dur);
+    const lp = audioCtx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.setValueAtTime(700, time);
+    lp.frequency.linearRampToValueAtTime(2400, time + 0.4);
+    env.connect(lp); out(lp);
+    freqs.forEach(freq => {
+      [['sawtooth', 0.22], ['square', 0.08]].forEach(([type, g]) => {
+        const o = audioCtx.createOscillator();
+        o.type = type; o.frequency.value = freq; o.detune.value = (Math.random() - 0.5) * 8;
+        const og = audioCtx.createGain(); og.gain.value = g;
+        o.connect(og); og.connect(env);
+        o.start(time); o.stop(time + dur + 0.1);
+      });
+    });
+  }
+
+  // Lookahead scheduler — queue notes ahead of the audio clock so
+  // timing stays rock-steady despite setInterval jitter.
   function scheduler() {
     while (seqNextTime < audioCtx.currentTime + 0.12) {
-      playPiano(ARP[seqIndex % ARP.length], seqNextTime);
-      // Retune the pad at each bar boundary (every 8 steps)
-      if (seqIndex % 8 === 0) {
-        const bar = PAD[(seqIndex / 8) % PAD.length];
-        padRoot.frequency.setTargetAtTime(bar.root, seqNextTime, 0.05);
-        padFifth.frequency.setTargetAtTime(bar.fifth, seqNextTime, 0.05);
+      const inLoop = seqIndex % ARP.length;
+      const progress = inLoop / ARP.length;       // 0→1 across the cycle
+      const vel = 0.6 + 0.4 * progress;           // build through the loop
+      playArp(ARP[inLoop], seqNextTime, vel);
+      // Chord boundary (every 6 steps): retune pad, maybe add brass
+      if (inLoop % NOTES_PER_CHORD === 0) {
+        const ci = (inLoop / NOTES_PER_CHORD) % PAD.length;
+        padRoot.frequency.setTargetAtTime(PAD[ci].root, seqNextTime, 0.04);
+        padFifth.frequency.setTargetAtTime(PAD[ci].fifth, seqNextTime, 0.04);
+        padOct.frequency.setTargetAtTime(PAD[ci].oct, seqNextTime, 0.04);
+        if (progress >= 0.45) {  // brass lifts in the back half
+          playBrass(BRASS[ci], seqNextTime, NOTES_PER_CHORD * STEP, vel);
+        }
       }
       seqIndex++;
       seqNextTime += STEP;
@@ -1213,22 +1261,35 @@ function ensureAudio() {
   seqNextTime = audioCtx.currentTime + 0.1;
   seqTimer = setInterval(scheduler, 25);
 
-  // Ticking-clock pulse — the cue's signature, two ticks per bar
+  // ── Ticking-clock pulse — the cue's signature, on a crisp dry bus ──
+  const tickBus = audioCtx.createGain(); tickBus.gain.value = 0.6;
+  tickBus.connect(dryBus);
   function tick() {
     const t = audioCtx.currentTime;
     const click = audioCtx.createOscillator();
-    click.type = 'sine';
-    click.frequency.value = 1500;
+    click.type = 'sine'; click.frequency.value = 1500;
     const clickEnv = audioCtx.createGain();
     clickEnv.gain.setValueAtTime(0, t);
-    clickEnv.gain.linearRampToValueAtTime(1, t + 0.004);
+    clickEnv.gain.linearRampToValueAtTime(0.04, t + 0.004);
     clickEnv.gain.exponentialRampToValueAtTime(0.0001, t + 0.07);
-    click.connect(clickEnv);
-    clickEnv.connect(tickGain);
-    click.start(t);
-    click.stop(t + 0.09);
+    click.connect(clickEnv); clickEnv.connect(tickBus);
+    click.start(t); click.stop(t + 0.09);
   }
   tickTimer = setInterval(tick, 1000);
+}
+
+// Generate a decaying-noise impulse response for a lush hall reverb
+function makeImpulse(seconds, decay) {
+  const rate = audioCtx.sampleRate;
+  const len = Math.floor(rate * seconds);
+  const buf = audioCtx.createBuffer(2, len, rate);
+  for (let ch = 0; ch < 2; ch++) {
+    const data = buf.getChannelData(ch);
+    for (let i = 0; i < len; i++) {
+      data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, decay);
+    }
+  }
+  return buf;
 }
 
 audioBtn?.addEventListener('click', () => {
@@ -1236,16 +1297,11 @@ audioBtn?.addEventListener('click', () => {
   const on = audioBtn.getAttribute('aria-pressed') === 'true';
   audioBtn.setAttribute('aria-pressed', String(!on));
   if (audioCtx.state === 'suspended') audioCtx.resume();
-  // Smooth fades — never click on/off
+  // Single smooth master fade — never click on/off
   const now = audioCtx.currentTime;
-  const ramp = (node, target) => {
-    node.gain.cancelScheduledValues(now);
-    node.gain.setValueAtTime(node.gain.value, now);
-    node.gain.linearRampToValueAtTime(target, now + 1.4);
-  };
-  ramp(pianoGain, on ? 0 : 0.14);
-  ramp(padGain,   on ? 0 : 0.10);
-  ramp(tickGain,  on ? 0 : 0.022);
+  masterEnv.gain.cancelScheduledValues(now);
+  masterEnv.gain.setValueAtTime(masterEnv.gain.value, now);
+  masterEnv.gain.linearRampToValueAtTime(on ? 0 : 0.9, now + 1.6);
 });
 
 // Skills constellation — hover-to-highlight related projects
