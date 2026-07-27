@@ -3220,3 +3220,38 @@ body[data-theme="focus"] { color: rgba(255,255,255,0.88); }
   box-shadow: 0 0 18px rgba(53, 214, 255, 0.5) !important;
   transition: outline 0.1s, box-shadow 0.1s;
 }
+
+/* Gesture first-run coach mark */
+.gesture-coach {
+  position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  width: min(90vw, 420px);
+  pointer-events: auto;
+  padding: 1.75rem;
+  border: 1px solid rgba(53, 214, 255, 0.4);
+  border-radius: 1rem;
+  background: rgba(4, 12, 18, 0.82);
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 0 40px rgba(53, 214, 255, 0.22), inset 0 0 30px rgba(53, 214, 255, 0.06);
+  text-align: center;
+  animation: gc-in 0.45s ease-out both;
+  transition: opacity 0.4s, transform 0.4s;
+}
+.gesture-coach.dismissed { opacity: 0; transform: translate(-50%, -46%); pointer-events: none; }
+@keyframes gc-in { from { opacity: 0; transform: translate(-50%, -44%); } to { opacity: 1; transform: translate(-50%, -50%); } }
+.gc-eyebrow { font-family: var(--font-display); font-size: 0.68rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: #35d6ff; }
+.gc-title { font-family: var(--font-display); font-size: 1.3rem; margin: 0.5rem 0 0.4rem; color: #eaffff; }
+.gc-sub { font-size: 0.82rem; color: rgba(110, 231, 255, 0.75); margin: 0 0 1.1rem; }
+.gc-sub.ready { color: #35ffa0; }
+.gc-steps { list-style: none; padding: 0; margin: 0 0 1.25rem; display: flex; flex-direction: column; gap: 0.65rem; text-align: left; }
+.gc-steps li { display: flex; align-items: center; gap: 0.7rem; font-size: 0.82rem; color: rgba(234, 255, 255, 0.82); }
+.gc-steps strong { color: #fff; }
+.gc-glyph { font-size: 1.25rem; width: 1.8rem; text-align: center; flex-shrink: 0; filter: drop-shadow(0 0 6px rgba(53,214,255,0.5)); }
+.gc-dismiss {
+  font-family: var(--font-display); font-size: 0.8rem; font-weight: 600;
+  color: #04121a; background: #35d6ff; border: none;
+  padding: 0.5rem 1.4rem; border-radius: 999px; cursor: pointer;
+  transition: background 0.2s, box-shadow 0.2s;
+}
+.gc-dismiss:hover { background: #6ee7ff; box-shadow: 0 0 16px rgba(53, 214, 255, 0.55); }
+.gc-hint { display: block; margin-top: 0.8rem; font-size: 0.68rem; color: rgba(110, 231, 255, 0.5); }
+.gc-hint kbd { font-family: var(--font-display); border: 1px solid rgba(110,231,255,0.3); border-radius: 4px; padding: 0.05rem 0.35rem; font-size: 0.9em; }

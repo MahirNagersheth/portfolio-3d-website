@@ -2327,7 +2327,11 @@ if (_friendsSecEl) {
   const video = document.getElementById('gesture-video');
   const statusEl = document.getElementById('gesture-status');
   const dotEl = document.getElementById('ghud-dot');
+  const coachEl = document.getElementById('gesture-coach');
+  const gcSub = document.getElementById('gc-sub');
+  const gcDismiss = document.getElementById('gc-dismiss');
   if (!btn || !overlay || !canvas || !video) return;
+  const COACH_KEY = 'mn-gesture-coached';
 
   const ctx = canvas.getContext('2d');
   const CYAN = '#35d6ff';
@@ -2343,12 +2347,38 @@ if (_friendsSecEl) {
   let active = false, landmarker = null, stream = null, rafId = null;
   let lastVideoTime = -1, lastTs = 0;
   let wasPinch = false, lastClickAt = 0;
-  let scrollPalmY = null, hoverEl = null;
+  let scrollPalmY = null, hoverEl = null, handSeen = false;
 
   function setStatus(text, live) {
     if (statusEl) statusEl.textContent = text;
     if (dotEl) dotEl.classList.toggle('live', !!live);
   }
+
+  // First-run coach mark — shows until the visitor has tracked a hand once
+  function showCoach() {
+    if (!coachEl) return;
+    let coached = false;
+    try { coached = !!localStorage.getItem(COACH_KEY); } catch (_) {}
+    if (coached) { coachEl.classList.add('dismissed'); return; }
+    coachEl.classList.remove('dismissed');
+    setCoachSub('Allow camera access, then raise one hand into the frame.', false);
+  }
+  function setCoachSub(text, ready) {
+    if (!gcSub || coachEl.classList.contains('dismissed')) return;
+    gcSub.textContent = text;
+    gcSub.classList.toggle('ready', !!ready);
+  }
+  function dismissCoach(flash) {
+    try { localStorage.setItem(COACH_KEY, '1'); } catch (_) {}
+    if (!coachEl || coachEl.classList.contains('dismissed')) return;
+    if (flash) {
+      setCoachSub("You're in control ✨", true);
+      setTimeout(() => coachEl.classList.add('dismissed'), 1200);
+    } else {
+      coachEl.classList.add('dismissed');
+    }
+  }
+  gcDismiss?.addEventListener('click', () => dismissCoach(false));
 
   function sizeCanvas() {
     const dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -2375,9 +2405,11 @@ if (_friendsSecEl) {
 
   async function start() {
     active = true;
+    handSeen = false;
     btn.setAttribute('aria-pressed', 'true');
     overlay.hidden = false;
     overlay.setAttribute('aria-hidden', 'false');
+    showCoach();
     sizeCanvas();
     addEventListener('resize', sizeCanvas);
 
@@ -2390,10 +2422,12 @@ if (_friendsSecEl) {
       video.srcObject = stream;
       await video.play();
       setStatus('Show your hand', true);
+      setCoachSub('Camera on — raise your hand into the frame.', false);
       rafId = requestAnimationFrame(loop);
     } catch (err) {
       console.warn('[Gesture]', err);
       setStatus(err?.name === 'NotAllowedError' ? 'Camera blocked' : 'Unavailable');
+      setCoachSub(err?.name === 'NotAllowedError' ? 'Camera blocked — allow it in your browser, then retry.' : 'Camera unavailable on this device.', false);
       setTimeout(() => { if (active) stop(); }, 2200);
     }
   }
@@ -2446,6 +2480,7 @@ if (_friendsSecEl) {
       return;
     }
     const lm = hands[0];
+    if (!handSeen) { handSeen = true; dismissCoach(true); }
     drawSkeleton(lm);
     interpret(lm);
   }

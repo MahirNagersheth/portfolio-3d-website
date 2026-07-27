@@ -1365,6 +1365,21 @@
        panel shows the mirrored camera feed and tracking status. -->
   <div class="gesture-overlay" id="gesture-overlay" hidden aria-hidden="true">
     <canvas class="gesture-canvas" id="gesture-canvas"></canvas>
+
+    <!-- First-run coach mark — auto-dismisses once a hand is tracked -->
+    <div class="gesture-coach" id="gesture-coach">
+      <span class="gc-eyebrow">★ JARVIS Mode</span>
+      <h3 class="gc-title">Control with your hands</h3>
+      <p class="gc-sub" id="gc-sub">Allow camera access, then raise one hand into the frame.</p>
+      <ul class="gc-steps">
+        <li><span class="gc-glyph">☝</span><span><strong>Point</strong> — move the reticle with your index finger</span></li>
+        <li><span class="gc-glyph">🤏</span><span><strong>Pinch</strong> thumb + index — click what it's over</span></li>
+        <li><span class="gc-glyph">🖐</span><span><strong>Open palm</strong>, move up / down — scroll</span></li>
+      </ul>
+      <button class="gc-dismiss" id="gc-dismiss" type="button">Got it</button>
+      <span class="gc-hint">Press <kbd>Esc</kbd> anytime to exit</span>
+    </div>
+
     <div class="gesture-hud" id="gesture-hud">
       <div class="ghud-frame">
         <video class="ghud-video" id="gesture-video" playsinline muted></video>
