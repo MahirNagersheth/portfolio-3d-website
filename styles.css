@@ -3255,3 +3255,7 @@ body[data-theme="focus"] { color: rgba(255,255,255,0.88); }
 .gc-dismiss:hover { background: #6ee7ff; box-shadow: 0 0 16px rgba(53, 214, 255, 0.55); }
 .gc-hint { display: block; margin-top: 0.8rem; font-size: 0.68rem; color: rgba(110, 231, 255, 0.5); }
 .gc-hint kbd { font-family: var(--font-display); border: 1px solid rgba(110,231,255,0.3); border-radius: 4px; padding: 0.05rem 0.35rem; font-size: 0.9em; }
+
+/* While exploring the system with gestures, lock the page so the solar
+   scene owns the viewport (the camera is driven by hands, not scroll). */
+body.gesture-active { overflow: hidden; }

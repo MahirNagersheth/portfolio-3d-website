@@ -567,6 +567,70 @@ function focusOverview(scrollToTop) {
   }
 }
 
+// ---------- Gesture "explore" mode — free orbit of the solar system ----------
+// Driven by the hand-gesture module. When active, the scroll-driven camera
+// targeting is bypassed and the camera orbits the sun on a sphere so the
+// visitor can look around, zoom, and dive into planets with their hands.
+let gestureExplore = false;
+const gCam = { theta: 0, phi: 1.1, radius: 26, tTheta: 0, tPhi: 1.1, tRadius: 26 };
+
+function enterExplore() {
+  gestureExplore = true;
+  setMode('overview');
+  const r = OVERVIEW_POS.length() || 26;
+  gCam.radius = gCam.tRadius = r;
+  gCam.phi   = gCam.tPhi   = Math.acos(THREE.MathUtils.clamp(OVERVIEW_POS.y / r, -1, 1));
+  gCam.theta = gCam.tTheta = Math.atan2(OVERVIEW_POS.x, OVERVIEW_POS.z);
+}
+function exitExplore() {
+  if (!gestureExplore) return;
+  gestureExplore = false;
+  hoveredPlanetId = null;
+  refreshCameraTargets();
+}
+function exploreOrbit(dTheta, dPhi) {
+  gCam.tTheta += dTheta;
+  gCam.tPhi = THREE.MathUtils.clamp(gCam.tPhi + dPhi, 0.4, Math.PI - 0.4);
+}
+function exploreZoom(factor) {
+  gCam.tRadius = THREE.MathUtils.clamp(gCam.tRadius * factor, 10, 78);
+}
+function exploreRecenter() {
+  const r = OVERVIEW_POS.length() || 26;
+  gCam.tRadius = r;
+  gCam.tPhi = Math.acos(THREE.MathUtils.clamp(OVERVIEW_POS.y / r, -1, 1));
+  gCam.tTheta = Math.atan2(OVERVIEW_POS.x, OVERVIEW_POS.z);
+}
+function exploreTick(dt) {
+  const k = 1 - Math.exp(-9 * dt);
+  gCam.theta  += (gCam.tTheta  - gCam.theta ) * k;
+  gCam.phi    += (gCam.tPhi    - gCam.phi   ) * k;
+  gCam.radius += (gCam.tRadius - gCam.radius) * k;
+  const sp = Math.sin(gCam.phi);
+  camPosTarget.set(
+    gCam.radius * sp * Math.sin(gCam.theta),
+    gCam.radius * Math.cos(gCam.phi),
+    gCam.radius * sp * Math.cos(gCam.theta)
+  );
+  camLookTarget.set(0, 0, 0);
+}
+// Nearest planet to a screen point (px radius), or null
+function screenPickPlanet(x, y, px = 90) {
+  let best = null, bestD = px;
+  const v = new THREE.Vector3();
+  PLANETS.forEach(p => {
+    p.group.getWorldPosition(v); v.project(camera);
+    if (v.z > 1) return;
+    const sx = (v.x * 0.5 + 0.5) * innerWidth;
+    const sy = (-v.y * 0.5 + 0.5) * innerHeight;
+    const d = Math.hypot(sx - x, sy - y);
+    if (d < bestD) { bestD = d; best = p.id; }
+  });
+  return best;
+}
+function exploreHover(id) { hoveredPlanetId = id; }
+function exploreFlyTo(id) { exitExplore(); focusPlanet(id, true); }
+
 // Section observer — when a section enters view, switch to that planet
 const sectionEls = document.querySelectorAll('main .section');
 const sectionObs = new IntersectionObserver(entries => {
@@ -732,14 +796,19 @@ function animate() {
     }
   });
 
-  // Auto-pop back to overview if user scrolled into hero (and no click in flight)
-  if (isInHeroZone() && mode === 'planet' && performance.now() > clickScrollUntil) setMode('overview');
+  if (gestureExplore) {
+    exploreTick(dt);
+  } else {
+    // Auto-pop back to overview if user scrolled into hero (and no click in flight)
+    if (isInHeroZone() && mode === 'planet' && performance.now() > clickScrollUntil) setMode('overview');
+    if (mode === 'overview') refreshCameraTargets();
+  }
 
-  if (mode === 'overview') refreshCameraTargets();
-
-  // Camera damping — frame-rate independent
-  camera.position.lerp(camPosTarget, 1 - Math.exp(-POS_LAMBDA * dt));
-  currentLookAt.lerp(camLookTarget, 1 - Math.exp(-LOOK_LAMBDA * dt));
+  // Camera damping — frame-rate independent (snappier while exploring)
+  const posL = gestureExplore ? 5.0 : POS_LAMBDA;
+  const lookL = gestureExplore ? 5.0 : LOOK_LAMBDA;
+  camera.position.lerp(camPosTarget, 1 - Math.exp(-posL * dt));
+  currentLookAt.lerp(camLookTarget, 1 - Math.exp(-lookL * dt));
   camera.lookAt(currentLookAt);
 
   // Hero chrome fade
@@ -2346,8 +2415,9 @@ if (_friendsSecEl) {
 
   let active = false, landmarker = null, stream = null, rafId = null;
   let lastVideoTime = -1, lastTs = 0;
-  let wasPinch = false, lastClickAt = 0;
-  let scrollPalmY = null, hoverEl = null, handSeen = false;
+  let wasPinch = false, lastSelectAt = 0, handSeen = false;
+  let rawHands = [], smoothLm = null;
+  let lastPalmX = null, lastPalmY = null, twoDist = null;
 
   function setStatus(text, live) {
     if (statusEl) statusEl.textContent = text;
@@ -2399,7 +2469,7 @@ if (_friendsSecEl) {
         delegate: 'GPU',
       },
       runningMode: 'VIDEO',
-      numHands: 1,
+      numHands: 2,
     });
   }
 
@@ -2412,6 +2482,10 @@ if (_friendsSecEl) {
     showCoach();
     sizeCanvas();
     addEventListener('resize', sizeCanvas);
+    // Bring the solar system front-and-centre and hand the camera to gestures
+    document.body.classList.add('gesture-active');
+    scrollTo({ top: 0 });
+    enterExplore();
 
     try {
       if (!landmarker) landmarker = await loadLandmarker();
@@ -2442,12 +2516,10 @@ if (_friendsSecEl) {
     if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
     video.srcObject = null;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    clearHover();
-    scrollPalmY = null; wasPinch = false;
-  }
-
-  function clearHover() {
-    if (hoverEl) { hoverEl.classList.remove('gesture-hover'); hoverEl = null; }
+    document.body.classList.remove('gesture-active');
+    exitExplore();
+    rawHands = []; smoothLm = null;
+    lastPalmX = lastPalmY = twoDist = null; wasPinch = false;
   }
 
   // Map a normalized landmark to screen pixels (mirrored, selfie view)
@@ -2455,81 +2527,130 @@ if (_friendsSecEl) {
   const sy = lm => lm.y * innerHeight;
   const d2 = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 
+  // Exponential-smooth a landmark array toward a fresh one (kills jitter)
+  function smoothArr(prev, cur, a) {
+    if (!prev || prev.length !== cur.length) return cur.map(p => ({ x: p.x, y: p.y, z: p.z }));
+    for (let i = 0; i < cur.length; i++) {
+      prev[i].x += (cur[i].x - prev[i].x) * a;
+      prev[i].y += (cur[i].y - prev[i].y) * a;
+      prev[i].z += (cur[i].z - prev[i].z) * a;
+    }
+    return prev;
+  }
+
+  // Detect only on a fresh camera frame, but redraw + interpret every rAF
+  // frame using smoothed landmarks — decouples 30fps detection from 60fps
+  // rendering so motion looks fluid.
   function loop() {
     if (!active) return;
     rafId = requestAnimationFrame(loop);
     if (video.readyState < 2) return;
-
-    let result = null;
     if (video.currentTime !== lastVideoTime) {
       lastVideoTime = video.currentTime;
       let ts = performance.now();
       if (ts <= lastTs) ts = lastTs + 1;
       lastTs = ts;
-      try { result = landmarker.detectForVideo(video, ts); } catch (_) { return; }
-    } else {
-      return; // no new frame
+      try {
+        const result = landmarker.detectForVideo(video, ts);
+        rawHands = result?.landmarks || [];
+      } catch (_) { /* keep last */ }
     }
+    render();
+  }
 
+  function render() {
     ctx.clearRect(0, 0, innerWidth, innerHeight);
-    const hands = result?.landmarks || [];
-    if (!hands.length) {
+    if (!rawHands.length) {
       setStatus('Show your hand', true);
-      clearHover();
-      scrollPalmY = null; wasPinch = false;
+      smoothLm = null; lastPalmX = lastPalmY = twoDist = null; wasPinch = false;
+      exploreHover(null);
       return;
     }
-    const lm = hands[0];
     if (!handSeen) { handSeen = true; dismissCoach(true); }
-    drawSkeleton(lm);
-    interpret(lm);
+
+    smoothLm = smoothArr(smoothLm, rawHands[0], 0.5);
+    drawSkeleton(smoothLm);
+
+    if (rawHands.length >= 2) {
+      drawSkeleton(rawHands[1]);
+      handleZoom(rawHands[0], rawHands[1]);
+      lastPalmX = lastPalmY = null; // suspend orbit while zooming
+    } else {
+      twoDist = null;
+      handleOneHand(smoothLm);
+    }
   }
 
   function fingerExtended(tip, pip, lm) {
     return d2(lm[tip], lm[0]) > d2(lm[pip], lm[0]) * 1.15;
   }
 
-  function interpret(lm) {
-    const palm = d2(lm[0], lm[9]) || 0.0001;
-    const pinchRatio = d2(lm[4], lm[8]) / palm;
-    const pinch = pinchRatio < 0.55;
-    const idx = fingerExtended(8, 6, lm);
-    const mid = fingerExtended(12, 10, lm);
-    const ring = fingerExtended(16, 14, lm);
-    const pinky = fingerExtended(20, 18, lm);
-    const extended = idx + mid + ring + pinky;
-    const openPalm = extended >= 4 && !pinch;
+  // Two hands → spread apart / together to zoom the whole system in / out
+  function handleZoom(a, b) {
+    const dist = Math.hypot(a[9].x - b[9].x, a[9].y - b[9].y);
+    if (twoDist !== null) {
+      let factor = twoDist / (dist || 0.0001);       // spread → dist↑ → factor<1 → zoom in
+      factor = Math.min(1.08, Math.max(0.92, factor));
+      exploreZoom(factor);
+    }
+    twoDist = dist;
+    // Connector line between the two hands
+    ctx.save();
+    ctx.strokeStyle = '#6effc8'; ctx.shadowColor = '#6effc8'; ctx.shadowBlur = 10;
+    ctx.lineWidth = 1.5; ctx.setLineDash([4, 6]);
+    ctx.beginPath(); ctx.moveTo(sx(a[9]), sy(a[9])); ctx.lineTo(sx(b[9]), sy(b[9])); ctx.stroke();
+    ctx.restore();
+    setStatus('Zoom', true);
+  }
 
-    // Reticle follows the index fingertip
+  // One hand → point to aim at a planet, open palm to orbit, pinch to dive in,
+  // fist to recentre the view.
+  function handleOneHand(lm) {
+    const palm = d2(lm[0], lm[9]) || 0.0001;
+    const pinch = d2(lm[4], lm[8]) / palm < 0.5;
+    const ext = fingerExtended(8, 6, lm) + fingerExtended(12, 10, lm)
+              + fingerExtended(16, 14, lm) + fingerExtended(20, 18, lm);
+    const openPalm = ext >= 4 && !pinch;
+    const fist = ext === 0 && !pinch;
+
+    // Reticle at the index fingertip; aim it at a planet
     const cx = sx(lm[8]), cy = sy(lm[8]);
     drawReticle(cx, cy, pinch);
+    const planetId = pinch ? hoveredPlanetId : screenPickPlanet(cx, cy);
+    if (!pinch) exploreHover(planetId);
 
-    // Hover the element under the reticle
-    const raw = document.elementFromPoint(cx, cy);
-    const target = raw && raw.closest(
-      'a,button,summary,input,[role="button"],.sc-chip,.project-card,.piano-card,.venture-card,.writing-card'
-    );
-    if (target !== hoverEl) { clearHover(); if (target) { target.classList.add('gesture-hover'); hoverEl = target; } }
-
-    // Open palm → scroll on vertical movement
+    // Open palm → orbit the system by dragging your hand
     if (openPalm) {
-      const palmY = sy(lm[9]);
-      if (scrollPalmY !== null) scrollBy(0, (palmY - scrollPalmY) * 1.9);
-      scrollPalmY = palmY;
-      setStatus('Scrolling', true);
+      const px = sx(lm[9]), py = sy(lm[9]);
+      if (lastPalmX !== null) {
+        exploreOrbit((px - lastPalmX) / innerWidth * 3.2, (py - lastPalmY) / innerHeight * 3.0);
+      }
+      lastPalmX = px; lastPalmY = py;
+      setStatus('Orbiting', true);
     } else {
-      scrollPalmY = null;
+      lastPalmX = lastPalmY = null;
     }
 
-    // Pinch (rising edge) → click under the reticle
-    if (pinch && !wasPinch && performance.now() - lastClickAt > 500) {
-      lastClickAt = performance.now();
-      if (hoverEl) { hoverEl.click(); ripple(cx, cy); }
+    // Fist → gently recentre
+    if (fist) { exploreRecenter(); setStatus('Recentre', true); }
+
+    // Pinch (rising edge) on a targeted planet → dive into it
+    if (pinch && !wasPinch && performance.now() - lastSelectAt > 500) {
+      lastSelectAt = performance.now();
+      if (planetId) {
+        ripple(cx, cy);
+        const id = planetId;
+        setStatus('Entering…', true);
+        stop();                 // release camera + unlock scroll + stop tracking
+        exploreFlyTo(id);       // fly the 3D camera in and open that section
+        return;
+      }
     }
     wasPinch = pinch;
 
-    if (pinch) setStatus('Click', true);
-    else if (!openPalm) setStatus(idx ? 'Pointing' : 'Tracking', true);
+    if (!openPalm && !fist && !pinch) {
+      setStatus(planetId ? 'Pinch to enter ' + planetId : 'Aim at a planet', true);
+    }
   }
 
   // ── Drawing ──
