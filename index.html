@@ -96,6 +96,16 @@
         </svg>
       </button>
 
+      <!-- Gesture control: webcam hand-tracking (JARVIS mode) -->
+      <button class="gesture-toggle" id="gesture-toggle" aria-label="Toggle hand-gesture control" aria-pressed="false" type="button" title="Control with hand gestures">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M8 12V5.5a1.5 1.5 0 0 1 3 0V11"/>
+          <path d="M11 11V4a1.5 1.5 0 0 1 3 0v7"/>
+          <path d="M14 11.5V6a1.5 1.5 0 0 1 3 0v7"/>
+          <path d="M17 8.5a1.5 1.5 0 0 1 3 0V15a6 6 0 0 1-6 6h-2a6 6 0 0 1-5.2-3l-2.4-4.2a1.5 1.5 0 0 1 2.6-1.5L8 14"/>
+        </svg>
+      </button>
+
       <!-- Keyboard shortcut help: press ? -->
       <button class="help-toggle" id="help-toggle" aria-label="Keyboard shortcuts" type="button" title="Keyboard shortcuts (?)">?</button>
 
@@ -1298,7 +1308,7 @@
         <li class="cl-entry">
           <span class="cl-date">May 2026</span>
           <strong>v1.0 — Launch</strong>
-          <p>Three.js solar system, 8 planetary sections, procedural planet textures, day/night mode, keyboard shortcuts, ambient audio drone, and meteor shower easter egg.</p>
+          <p>Three.js solar system, 8 planetary sections, procedural planet textures, day/night/focus modes, keyboard shortcuts, orchestral ambient audio, webcam hand-gesture control (JARVIS mode), and meteor shower easter egg.</p>
         </li>
       </ol>
     </div>
@@ -1346,6 +1356,29 @@
         <span><kbd>↑</kbd><kbd>↓</kbd> navigate</span>
         <span><kbd>↵</kbd> jump</span>
         <span><kbd>Esc</kbd> close</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Gesture-control overlay (JARVIS mode) — hidden until activated.
+       Full-screen canvas draws the hand skeleton + reticle; the corner
+       panel shows the mirrored camera feed and tracking status. -->
+  <div class="gesture-overlay" id="gesture-overlay" hidden aria-hidden="true">
+    <canvas class="gesture-canvas" id="gesture-canvas"></canvas>
+    <div class="gesture-hud" id="gesture-hud">
+      <div class="ghud-frame">
+        <video class="ghud-video" id="gesture-video" playsinline muted></video>
+        <span class="ghud-corner tl"></span><span class="ghud-corner tr"></span>
+        <span class="ghud-corner bl"></span><span class="ghud-corner br"></span>
+      </div>
+      <div class="ghud-readout">
+        <span class="ghud-dot" id="ghud-dot"></span>
+        <span class="ghud-status" id="gesture-status">Initializing…</span>
+      </div>
+      <div class="ghud-legend">
+        <span>☝ point · move cursor</span>
+        <span>🤏 pinch · click</span>
+        <span>🖐 open palm · scroll</span>
       </div>
     </div>
   </div>

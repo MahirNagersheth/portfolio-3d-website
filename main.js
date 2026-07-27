@@ -2311,3 +2311,261 @@ if (_friendsSecEl) {
   fetchNow();
   setInterval(fetchNow, 30000);
 })();
+
+// ============================================================
+//  Gesture control — "JARVIS mode". Webcam hand-tracking via
+//  MediaPipe Hand Landmarker (lazy-loaded on first activation).
+//    ☝ point       → move a holographic reticle
+//    🤏 pinch       → click whatever is under the reticle
+//    🖐 open palm   → move up/down to scroll
+//  Toggle with the nav button. HTTPS/localhost + webcam required.
+// ============================================================
+(function () {
+  const btn = document.getElementById('gesture-toggle');
+  const overlay = document.getElementById('gesture-overlay');
+  const canvas = document.getElementById('gesture-canvas');
+  const video = document.getElementById('gesture-video');
+  const statusEl = document.getElementById('gesture-status');
+  const dotEl = document.getElementById('ghud-dot');
+  if (!btn || !overlay || !canvas || !video) return;
+
+  const ctx = canvas.getContext('2d');
+  const CYAN = '#35d6ff';
+  const HAND_CONNECTIONS = [
+    [0,1],[1,2],[2,3],[3,4],           // thumb
+    [0,5],[5,6],[6,7],[7,8],           // index
+    [5,9],[9,10],[10,11],[11,12],      // middle
+    [9,13],[13,14],[14,15],[15,16],    // ring
+    [13,17],[17,18],[18,19],[19,20],   // pinky
+    [0,17],                            // palm base
+  ];
+
+  let active = false, landmarker = null, stream = null, rafId = null;
+  let lastVideoTime = -1, lastTs = 0;
+  let wasPinch = false, lastClickAt = 0;
+  let scrollPalmY = null, hoverEl = null;
+
+  function setStatus(text, live) {
+    if (statusEl) statusEl.textContent = text;
+    if (dotEl) dotEl.classList.toggle('live', !!live);
+  }
+
+  function sizeCanvas() {
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    canvas.width = innerWidth * dpr;
+    canvas.height = innerHeight * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  async function loadLandmarker() {
+    setStatus('Loading model…');
+    const vision = await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs');
+    const fileset = await vision.FilesetResolver.forVisionTasks(
+      'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm'
+    );
+    return vision.HandLandmarker.createFromOptions(fileset, {
+      baseOptions: {
+        modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',
+        delegate: 'GPU',
+      },
+      runningMode: 'VIDEO',
+      numHands: 1,
+    });
+  }
+
+  async function start() {
+    active = true;
+    btn.setAttribute('aria-pressed', 'true');
+    overlay.hidden = false;
+    overlay.setAttribute('aria-hidden', 'false');
+    sizeCanvas();
+    addEventListener('resize', sizeCanvas);
+
+    try {
+      if (!landmarker) landmarker = await loadLandmarker();
+      setStatus('Requesting camera…');
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'user', width: 640, height: 480 },
+      });
+      video.srcObject = stream;
+      await video.play();
+      setStatus('Show your hand', true);
+      rafId = requestAnimationFrame(loop);
+    } catch (err) {
+      console.warn('[Gesture]', err);
+      setStatus(err?.name === 'NotAllowedError' ? 'Camera blocked' : 'Unavailable');
+      setTimeout(() => { if (active) stop(); }, 2200);
+    }
+  }
+
+  function stop() {
+    active = false;
+    btn.setAttribute('aria-pressed', 'false');
+    overlay.hidden = true;
+    overlay.setAttribute('aria-hidden', 'true');
+    if (rafId) cancelAnimationFrame(rafId), rafId = null;
+    removeEventListener('resize', sizeCanvas);
+    if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+    video.srcObject = null;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    clearHover();
+    scrollPalmY = null; wasPinch = false;
+  }
+
+  function clearHover() {
+    if (hoverEl) { hoverEl.classList.remove('gesture-hover'); hoverEl = null; }
+  }
+
+  // Map a normalized landmark to screen pixels (mirrored, selfie view)
+  const sx = lm => (1 - lm.x) * innerWidth;
+  const sy = lm => lm.y * innerHeight;
+  const d2 = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+
+  function loop() {
+    if (!active) return;
+    rafId = requestAnimationFrame(loop);
+    if (video.readyState < 2) return;
+
+    let result = null;
+    if (video.currentTime !== lastVideoTime) {
+      lastVideoTime = video.currentTime;
+      let ts = performance.now();
+      if (ts <= lastTs) ts = lastTs + 1;
+      lastTs = ts;
+      try { result = landmarker.detectForVideo(video, ts); } catch (_) { return; }
+    } else {
+      return; // no new frame
+    }
+
+    ctx.clearRect(0, 0, innerWidth, innerHeight);
+    const hands = result?.landmarks || [];
+    if (!hands.length) {
+      setStatus('Show your hand', true);
+      clearHover();
+      scrollPalmY = null; wasPinch = false;
+      return;
+    }
+    const lm = hands[0];
+    drawSkeleton(lm);
+    interpret(lm);
+  }
+
+  function fingerExtended(tip, pip, lm) {
+    return d2(lm[tip], lm[0]) > d2(lm[pip], lm[0]) * 1.15;
+  }
+
+  function interpret(lm) {
+    const palm = d2(lm[0], lm[9]) || 0.0001;
+    const pinchRatio = d2(lm[4], lm[8]) / palm;
+    const pinch = pinchRatio < 0.55;
+    const idx = fingerExtended(8, 6, lm);
+    const mid = fingerExtended(12, 10, lm);
+    const ring = fingerExtended(16, 14, lm);
+    const pinky = fingerExtended(20, 18, lm);
+    const extended = idx + mid + ring + pinky;
+    const openPalm = extended >= 4 && !pinch;
+
+    // Reticle follows the index fingertip
+    const cx = sx(lm[8]), cy = sy(lm[8]);
+    drawReticle(cx, cy, pinch);
+
+    // Hover the element under the reticle
+    const raw = document.elementFromPoint(cx, cy);
+    const target = raw && raw.closest(
+      'a,button,summary,input,[role="button"],.sc-chip,.project-card,.piano-card,.venture-card,.writing-card'
+    );
+    if (target !== hoverEl) { clearHover(); if (target) { target.classList.add('gesture-hover'); hoverEl = target; } }
+
+    // Open palm → scroll on vertical movement
+    if (openPalm) {
+      const palmY = sy(lm[9]);
+      if (scrollPalmY !== null) scrollBy(0, (palmY - scrollPalmY) * 1.9);
+      scrollPalmY = palmY;
+      setStatus('Scrolling', true);
+    } else {
+      scrollPalmY = null;
+    }
+
+    // Pinch (rising edge) → click under the reticle
+    if (pinch && !wasPinch && performance.now() - lastClickAt > 500) {
+      lastClickAt = performance.now();
+      if (hoverEl) { hoverEl.click(); ripple(cx, cy); }
+    }
+    wasPinch = pinch;
+
+    if (pinch) setStatus('Click', true);
+    else if (!openPalm) setStatus(idx ? 'Pointing' : 'Tracking', true);
+  }
+
+  // ── Drawing ──
+  function drawSkeleton(lm) {
+    ctx.save();
+    ctx.strokeStyle = CYAN;
+    ctx.shadowColor = CYAN; ctx.shadowBlur = 12;
+    ctx.lineWidth = 2.5; ctx.globalAlpha = 0.75;
+    ctx.beginPath();
+    HAND_CONNECTIONS.forEach(([a, b]) => {
+      ctx.moveTo(sx(lm[a]), sy(lm[a]));
+      ctx.lineTo(sx(lm[b]), sy(lm[b]));
+    });
+    ctx.stroke();
+    ctx.globalAlpha = 0.95;
+    lm.forEach((p, i) => {
+      ctx.beginPath();
+      ctx.arc(sx(p), sy(p), i === 8 ? 5 : 3, 0, Math.PI * 2);
+      ctx.fillStyle = i === 8 ? '#fff' : CYAN;
+      ctx.fill();
+    });
+    ctx.restore();
+  }
+
+  function drawReticle(x, y, locked) {
+    const t = performance.now() / 1000;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.strokeStyle = locked ? '#6effc8' : CYAN;
+    ctx.shadowColor = ctx.strokeStyle; ctx.shadowBlur = 16;
+    ctx.lineWidth = 2;
+    const r = locked ? 16 : 22;
+    // Rotating bracket arcs
+    ctx.rotate(t * (locked ? -2 : 0.8));
+    for (let i = 0; i < 4; i++) {
+      ctx.beginPath();
+      ctx.arc(0, 0, r, i * Math.PI / 2 + 0.25, i * Math.PI / 2 + Math.PI / 2 - 0.25);
+      ctx.stroke();
+    }
+    ctx.rotate(-t * (locked ? -2 : 0.8));
+    // Center dot
+    ctx.beginPath();
+    ctx.arc(0, 0, locked ? 5 : 2.5, 0, Math.PI * 2);
+    ctx.fillStyle = ctx.strokeStyle; ctx.fill();
+    ctx.restore();
+  }
+
+  const ripples = [];
+  function ripple(x, y) { ripples.push({ x, y, born: performance.now() }); }
+  // Ripples are drawn each frame on top of the reticle
+  (function ripFrame() {
+    if (ctx) {
+      const now = performance.now();
+      for (let i = ripples.length - 1; i >= 0; i--) {
+        const age = (now - ripples[i].born) / 500;
+        if (age > 1) { ripples.splice(i, 1); continue; }
+        ctx.save();
+        ctx.strokeStyle = '#6effc8';
+        ctx.globalAlpha = 1 - age;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(ripples[i].x, ripples[i].y, 10 + age * 40, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+    requestAnimationFrame(ripFrame);
+  })();
+
+  btn.addEventListener('click', () => { active ? stop() : start(); });
+  addEventListener('keydown', e => {
+    if (e.key === 'Escape' && active) { e.stopImmediatePropagation(); stop(); }
+  }, true);
+})();

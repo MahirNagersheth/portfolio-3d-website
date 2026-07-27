@@ -3133,3 +3133,90 @@ body[data-theme="focus"] .nav {
 
 /* Keep text legible */
 body[data-theme="focus"] { color: rgba(255,255,255,0.88); }
+
+/* ── Gesture control (JARVIS mode) ──────────────────────────────── */
+.gesture-toggle {
+  position: relative;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 38px; height: 38px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--fg-dim);
+  cursor: pointer;
+  transition: border-color 0.3s, color 0.3s, background 0.3s;
+}
+.gesture-toggle svg { width: 19px; height: 19px; }
+.gesture-toggle:hover {
+  border-color: #35d6ff;
+  color: #6ee7ff;
+  background: rgba(53, 214, 255, 0.08);
+}
+.gesture-toggle[aria-pressed="true"] {
+  border-color: #35d6ff;
+  color: #6ee7ff;
+  background: rgba(53, 214, 255, 0.16);
+  box-shadow: 0 0 14px rgba(53, 214, 255, 0.45);
+}
+@media (max-width: 860px) { .gesture-toggle { display: none; } }
+
+/* Full-screen overlay: canvas draws skeleton + reticle */
+.gesture-overlay { position: fixed; inset: 0; z-index: 970; pointer-events: none; }
+.gesture-canvas  { position: fixed; inset: 0; width: 100vw; height: 100vh; pointer-events: none; }
+
+/* Corner camera HUD */
+.gesture-hud {
+  position: fixed; bottom: 1.5rem; left: 1.5rem;
+  width: 230px;
+  display: flex; flex-direction: column; gap: 0.5rem;
+  font-family: var(--font-display);
+  animation: ghud-in 0.5s ease-out both;
+}
+@keyframes ghud-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+.ghud-frame {
+  position: relative;
+  border: 1px solid rgba(53, 214, 255, 0.4);
+  border-radius: 0.5rem;
+  overflow: hidden;
+  background: rgba(4, 12, 18, 0.6);
+  box-shadow: 0 0 20px rgba(53, 214, 255, 0.2), inset 0 0 20px rgba(53, 214, 255, 0.08);
+}
+.ghud-video {
+  display: block; width: 100%; height: auto;
+  transform: scaleX(-1); /* mirror for selfie view */
+  opacity: 0.85;
+  filter: saturate(1.1) contrast(1.05);
+}
+.ghud-corner {
+  position: absolute; width: 14px; height: 14px;
+  border: 2px solid #35d6ff; pointer-events: none;
+}
+.ghud-corner.tl { top: 5px; left: 5px; border-right: none; border-bottom: none; }
+.ghud-corner.tr { top: 5px; right: 5px; border-left: none; border-bottom: none; }
+.ghud-corner.bl { bottom: 5px; left: 5px; border-right: none; border-top: none; }
+.ghud-corner.br { bottom: 5px; right: 5px; border-left: none; border-top: none; }
+.ghud-readout {
+  display: flex; align-items: center; gap: 0.5rem;
+  font-size: 0.72rem; letter-spacing: 0.12em; text-transform: uppercase;
+  color: #6ee7ff;
+}
+.ghud-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: #ff5a5a; box-shadow: 0 0 8px #ff5a5a; flex-shrink: 0;
+  transition: background 0.3s, box-shadow 0.3s;
+}
+.ghud-dot.live { background: #35ffa0; box-shadow: 0 0 8px #35ffa0; animation: ghud-pulse 1.6s ease-in-out infinite; }
+@keyframes ghud-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.45; } }
+.ghud-legend {
+  display: flex; flex-direction: column; gap: 0.15rem;
+  font-family: var(--font-sans);
+  font-size: 0.68rem; color: rgba(110, 231, 255, 0.6);
+}
+
+/* Element currently under the gesture reticle */
+.gesture-hover {
+  outline: 2px solid #35d6ff !important;
+  outline-offset: 3px;
+  box-shadow: 0 0 18px rgba(53, 214, 255, 0.5) !important;
+  transition: outline 0.1s, box-shadow 0.1s;
+}
