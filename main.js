@@ -572,50 +572,92 @@ function focusOverview(scrollToTop) {
 // targeting is bypassed and the camera orbits the sun on a sphere so the
 // visitor can look around, zoom, and dive into planets with their hands.
 let gestureExplore = false;
-const gCam = { theta: 0, phi: 1.1, radius: 26, tTheta: 0, tPhi: 1.1, tRadius: 26 };
+let exploreStarBase = null;
+const gCam = {
+  theta: 0, phi: 1.1, radius: 26,
+  tTheta: 0, tPhi: 1.1, tRadius: 26,
+  center: new THREE.Vector3(0, 0, 0),
+  tCenter: new THREE.Vector3(0, 0, 0),
+  focusId: null,
+};
+const overviewRadius = () => OVERVIEW_POS.length() || 26;
 
 function enterExplore() {
   gestureExplore = true;
   setMode('overview');
-  const r = OVERVIEW_POS.length() || 26;
+  const r = overviewRadius();
   gCam.radius = gCam.tRadius = r;
   gCam.phi   = gCam.tPhi   = Math.acos(THREE.MathUtils.clamp(OVERVIEW_POS.y / r, -1, 1));
   gCam.theta = gCam.tTheta = Math.atan2(OVERVIEW_POS.x, OVERVIEW_POS.z);
+  gCam.center.set(0, 0, 0); gCam.tCenter.set(0, 0, 0);
+  gCam.focusId = null;
+  exploreStarBase = {
+    near: starsNear.material.opacity,
+    far:  starsFar.material.opacity,
+    dust: dust ? dust.material.opacity : 0,
+  };
 }
 function exitExplore() {
   if (!gestureExplore) return;
   gestureExplore = false;
   hoveredPlanetId = null;
+  gCam.focusId = null;
+  exploreStarBase = null;
+  // Restore the starfield/scene to the current theme's defaults
+  updateSceneForTheme(document.body.getAttribute('data-theme') || 'night');
   refreshCameraTargets();
 }
 function exploreOrbit(dTheta, dPhi) {
   gCam.tTheta += dTheta;
-  gCam.tPhi = THREE.MathUtils.clamp(gCam.tPhi + dPhi, 0.4, Math.PI - 0.4);
+  gCam.tPhi = THREE.MathUtils.clamp(gCam.tPhi + dPhi, 0.24, Math.PI - 0.24);
 }
 function exploreZoom(factor) {
-  gCam.tRadius = THREE.MathUtils.clamp(gCam.tRadius * factor, 10, 78);
+  const min = gCam.focusId ? 1.3 : 5;   // dive right up to a planet
+  gCam.tRadius = THREE.MathUtils.clamp(gCam.tRadius * factor, min, 82);
+}
+function exploreFocusPlanet(id) {
+  if (!PLANET_BY_ID[id]) return;
+  gCam.focusId = id;
+  gCam.tRadius = 4.2;  // swoop in close and immersive
 }
 function exploreRecenter() {
-  const r = OVERVIEW_POS.length() || 26;
+  gCam.focusId = null;
+  const r = overviewRadius();
+  gCam.tCenter.set(0, 0, 0);
   gCam.tRadius = r;
   gCam.tPhi = Math.acos(THREE.MathUtils.clamp(OVERVIEW_POS.y / r, -1, 1));
   gCam.tTheta = Math.atan2(OVERVIEW_POS.x, OVERVIEW_POS.z);
 }
 function exploreTick(dt) {
+  // Keep the focused planet centred as it orbits the sun
+  if (gCam.focusId && PLANET_BY_ID[gCam.focusId]) {
+    PLANET_BY_ID[gCam.focusId].group.getWorldPosition(gCam.tCenter);
+  }
   const k = 1 - Math.exp(-9 * dt);
+  const kc = 1 - Math.exp(-6 * dt);
   gCam.theta  += (gCam.tTheta  - gCam.theta ) * k;
   gCam.phi    += (gCam.tPhi    - gCam.phi   ) * k;
   gCam.radius += (gCam.tRadius - gCam.radius) * k;
+  gCam.center.lerp(gCam.tCenter, kc);
+
   const sp = Math.sin(gCam.phi);
   camPosTarget.set(
-    gCam.radius * sp * Math.sin(gCam.theta),
-    gCam.radius * Math.cos(gCam.phi),
-    gCam.radius * sp * Math.cos(gCam.theta)
+    gCam.center.x + gCam.radius * sp * Math.sin(gCam.theta),
+    gCam.center.y + gCam.radius * Math.cos(gCam.phi),
+    gCam.center.z + gCam.radius * sp * Math.cos(gCam.theta)
   );
-  camLookTarget.set(0, 0, 0);
+  camLookTarget.copy(gCam.center);
+
+  // Immersion — the starfield & dust bloom brighter the closer you fly
+  if (exploreStarBase) {
+    const closeness = THREE.MathUtils.clamp(1 - (gCam.radius - 3) / (overviewRadius() - 3), 0, 1);
+    starsNear.material.opacity = Math.min(1, exploreStarBase.near + closeness * 0.55);
+    starsFar.material.opacity  = Math.min(1, exploreStarBase.far  + closeness * 0.30);
+    if (dust) dust.material.opacity = Math.min(0.9, exploreStarBase.dust + closeness * 0.35);
+  }
 }
 // Nearest planet to a screen point (px radius), or null
-function screenPickPlanet(x, y, px = 90) {
+function screenPickPlanet(x, y, px = 100) {
   let best = null, bestD = px;
   const v = new THREE.Vector3();
   PLANETS.forEach(p => {
@@ -629,7 +671,6 @@ function screenPickPlanet(x, y, px = 90) {
   return best;
 }
 function exploreHover(id) { hoveredPlanetId = id; }
-function exploreFlyTo(id) { exitExplore(); focusPlanet(id, true); }
 
 // Section observer — when a section enters view, switch to that planet
 const sectionEls = document.querySelectorAll('main .section');
@@ -2398,7 +2439,11 @@ if (_friendsSecEl) {
   const dotEl = document.getElementById('ghud-dot');
   const coachEl = document.getElementById('gesture-coach');
   const gcSub = document.getElementById('gc-sub');
-  const gcDismiss = document.getElementById('gc-dismiss');
+  const gcStage = { glyph: document.getElementById('gc-glyph'), title: document.getElementById('gc-title'), body: document.getElementById('gc-body') };
+  const gcDots = document.getElementById('gc-dots');
+  const gcBack = document.getElementById('gc-back');
+  const gcNext = document.getElementById('gc-next');
+  const gcSkip = document.getElementById('gc-skip');
   if (!btn || !overlay || !canvas || !video) return;
   const COACH_KEY = 'mn-gesture-coached';
 
@@ -2417,38 +2462,65 @@ if (_friendsSecEl) {
   let lastVideoTime = -1, lastTs = 0;
   let wasPinch = false, lastSelectAt = 0, handSeen = false;
   let rawHands = [], smoothLm = null;
-  let lastPalmX = null, lastPalmY = null, twoDist = null;
+  let lastPalmX = null, lastPalmY = null, twoDist = null, exitHoldStart = null;
 
   function setStatus(text, live) {
     if (statusEl) statusEl.textContent = text;
     if (dotEl) dotEl.classList.toggle('live', !!live);
   }
 
-  // First-run coach mark — shows until the visitor has tracked a hand once
+  // ── Skippable stepped tutorial ──
+  const STEPS = [
+    { glyph: '👋', title: 'JARVIS Mode', body: 'Fly through the solar system with your hands. Allow camera access, then raise a hand into the frame.' },
+    { glyph: '🖐', title: 'Orbit', body: 'Hold an open palm and move your hand to spin the whole system around.' },
+    { glyph: '✌️', title: 'Zoom', body: 'Use both hands — spread them apart to fly in, bring them together to pull back.' },
+    { glyph: '🤏', title: 'Dive in', body: 'Point at any planet to lock on, then pinch to swoop in close and immersive.' },
+    { glyph: '✊', title: 'Exit', body: 'Make two fists and hold for a moment to leave hand mode. Esc works too.' },
+  ];
+  let stepIdx = 0;
+  let coachOpen = false;
+
+  function coached() { try { return !!localStorage.getItem(COACH_KEY); } catch (_) { return false; } }
+  function markCoached() { try { localStorage.setItem(COACH_KEY, '1'); } catch (_) {} }
+
+  function renderStep() {
+    const s = STEPS[stepIdx];
+    if (gcStage.glyph) gcStage.glyph.textContent = s.glyph;
+    if (gcStage.title) gcStage.title.textContent = s.title;
+    if (gcStage.body)  gcStage.body.textContent  = s.body;
+    if (gcDots) gcDots.innerHTML = STEPS.map((_, i) =>
+      `<span class="gc-dot${i === stepIdx ? ' on' : ''}"></span>`).join('');
+    if (gcBack) gcBack.disabled = stepIdx === 0;
+    if (gcNext) gcNext.textContent = stepIdx === STEPS.length - 1 ? 'Start exploring →' : 'Next';
+  }
   function showCoach() {
     if (!coachEl) return;
-    let coached = false;
-    try { coached = !!localStorage.getItem(COACH_KEY); } catch (_) {}
-    if (coached) { coachEl.classList.add('dismissed'); return; }
+    if (coached()) { coachEl.hidden = true; coachEl.classList.add('dismissed'); coachOpen = false; return; }
+    stepIdx = 0;
+    renderStep();
+    coachEl.hidden = false;
     coachEl.classList.remove('dismissed');
-    setCoachSub('Allow camera access, then raise one hand into the frame.', false);
+    coachOpen = true;
+    setCoachSub('Allow camera access to begin.', false);
+  }
+  function finishCoach() {
+    markCoached();
+    coachOpen = false;
+    if (!coachEl) return;
+    coachEl.classList.add('dismissed');
+    setTimeout(() => { coachEl.hidden = true; }, 420);
   }
   function setCoachSub(text, ready) {
-    if (!gcSub || coachEl.classList.contains('dismissed')) return;
+    if (!gcSub || !coachOpen) return;
     gcSub.textContent = text;
     gcSub.classList.toggle('ready', !!ready);
   }
-  function dismissCoach(flash) {
-    try { localStorage.setItem(COACH_KEY, '1'); } catch (_) {}
-    if (!coachEl || coachEl.classList.contains('dismissed')) return;
-    if (flash) {
-      setCoachSub("You're in control ✨", true);
-      setTimeout(() => coachEl.classList.add('dismissed'), 1200);
-    } else {
-      coachEl.classList.add('dismissed');
-    }
-  }
-  gcDismiss?.addEventListener('click', () => dismissCoach(false));
+  gcNext?.addEventListener('click', () => {
+    if (stepIdx < STEPS.length - 1) { stepIdx++; renderStep(); }
+    else finishCoach();
+  });
+  gcBack?.addEventListener('click', () => { if (stepIdx > 0) { stepIdx--; renderStep(); } });
+  gcSkip?.addEventListener('click', finishCoach);
 
   function sizeCanvas() {
     const dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -2562,27 +2634,60 @@ if (_friendsSecEl) {
     ctx.clearRect(0, 0, innerWidth, innerHeight);
     if (!rawHands.length) {
       setStatus('Show your hand', true);
-      smoothLm = null; lastPalmX = lastPalmY = twoDist = null; wasPinch = false;
+      smoothLm = null; lastPalmX = lastPalmY = twoDist = null; wasPinch = false; exitHoldStart = null;
       exploreHover(null);
       return;
     }
-    if (!handSeen) { handSeen = true; dismissCoach(true); }
+    if (!handSeen) { handSeen = true; setCoachSub('Hand detected — try the gestures ✨', true); }
 
     smoothLm = smoothArr(smoothLm, rawHands[0], 0.5);
     drawSkeleton(smoothLm);
 
     if (rawHands.length >= 2) {
       drawSkeleton(rawHands[1]);
-      handleZoom(rawHands[0], rawHands[1]);
-      lastPalmX = lastPalmY = null; // suspend orbit while zooming
+      lastPalmX = lastPalmY = null; // suspend orbit while two-handed
+      if (isFist(rawHands[0]) && isFist(rawHands[1])) {
+        twoDist = null;
+        handleExitHold();           // both fists → hold to leave hand mode
+      } else {
+        exitHoldStart = null;
+        handleZoom(rawHands[0], rawHands[1]);
+      }
     } else {
-      twoDist = null;
+      twoDist = null; exitHoldStart = null;
       handleOneHand(smoothLm);
     }
   }
 
   function fingerExtended(tip, pip, lm) {
     return d2(lm[tip], lm[0]) > d2(lm[pip], lm[0]) * 1.15;
+  }
+  function isFist(lm) {
+    return (fingerExtended(8, 6, lm) + fingerExtended(12, 10, lm)
+          + fingerExtended(16, 14, lm) + fingerExtended(20, 18, lm)) === 0;
+  }
+
+  // Both fists held → animated countdown, then exit hand mode
+  function handleExitHold() {
+    const now = performance.now();
+    if (exitHoldStart === null) exitHoldStart = now;
+    const prog = Math.min(1, (now - exitHoldStart) / 900);
+    drawExitRing(prog);
+    setStatus('Hold to exit…', true);
+    if (prog >= 1) stop();
+  }
+  function drawExitRing(prog) {
+    const cx = innerWidth / 2, cy = innerHeight / 2;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.strokeStyle = 'rgba(255,90,90,0.25)'; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.arc(0, 0, 44, 0, Math.PI * 2); ctx.stroke();
+    ctx.strokeStyle = '#ff5a5a'; ctx.shadowColor = '#ff5a5a'; ctx.shadowBlur = 14; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.arc(0, 0, 44, -Math.PI / 2, -Math.PI / 2 + prog * Math.PI * 2); ctx.stroke();
+    ctx.shadowBlur = 0; ctx.fillStyle = '#ff9a9a';
+    ctx.font = '600 12px "Space Grotesk", sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('EXIT', 0, 0);
+    ctx.restore();
   }
 
   // Two hands → spread apart / together to zoom the whole system in / out
@@ -2603,8 +2708,8 @@ if (_friendsSecEl) {
     setStatus('Zoom', true);
   }
 
-  // One hand → point to aim at a planet, open palm to orbit, pinch to dive in,
-  // fist to recentre the view.
+  // One hand → point to aim at a planet, open palm to orbit, pinch to swoop
+  // into a planet (staying in hand mode), fist to pull back to the full system.
   function handleOneHand(lm) {
     const palm = d2(lm[0], lm[9]) || 0.0001;
     const pinch = d2(lm[4], lm[8]) / palm < 0.5;
@@ -2626,30 +2731,23 @@ if (_friendsSecEl) {
         exploreOrbit((px - lastPalmX) / innerWidth * 3.2, (py - lastPalmY) / innerHeight * 3.0);
       }
       lastPalmX = px; lastPalmY = py;
-      setStatus('Orbiting', true);
+      setStatus(gCam.focusId ? 'Orbiting ' + gCam.focusId : 'Orbiting', true);
     } else {
       lastPalmX = lastPalmY = null;
     }
 
-    // Fist → gently recentre
-    if (fist) { exploreRecenter(); setStatus('Recentre', true); }
+    // Fist → pull back out to the whole system
+    if (fist) { exploreRecenter(); setStatus('Pulling back', true); }
 
-    // Pinch (rising edge) on a targeted planet → dive into it
-    if (pinch && !wasPinch && performance.now() - lastSelectAt > 500) {
+    // Pinch (rising edge) on a targeted planet → swoop in (stay in hand mode)
+    if (pinch && !wasPinch && performance.now() - lastSelectAt > 400) {
       lastSelectAt = performance.now();
-      if (planetId) {
-        ripple(cx, cy);
-        const id = planetId;
-        setStatus('Entering…', true);
-        stop();                 // release camera + unlock scroll + stop tracking
-        exploreFlyTo(id);       // fly the 3D camera in and open that section
-        return;
-      }
+      if (planetId) { ripple(cx, cy); exploreFocusPlanet(planetId); setStatus('Diving into ' + planetId, true); }
     }
     wasPinch = pinch;
 
     if (!openPalm && !fist && !pinch) {
-      setStatus(planetId ? 'Pinch to enter ' + planetId : 'Aim at a planet', true);
+      setStatus(planetId ? 'Pinch to dive into ' + planetId : 'Aim at a planet', true);
     }
   }
 

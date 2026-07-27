@@ -1366,18 +1366,21 @@
   <div class="gesture-overlay" id="gesture-overlay" hidden aria-hidden="true">
     <canvas class="gesture-canvas" id="gesture-canvas"></canvas>
 
-    <!-- First-run coach mark — auto-dismisses once a hand is tracked -->
-    <div class="gesture-coach" id="gesture-coach">
-      <span class="gc-eyebrow">★ JARVIS Mode</span>
-      <h3 class="gc-title">Control with your hands</h3>
-      <p class="gc-sub" id="gc-sub">Allow camera access, then raise one hand into the frame.</p>
-      <ul class="gc-steps">
-        <li><span class="gc-glyph">🖐</span><span><strong>Open palm</strong> — move your hand to orbit the system</span></li>
-        <li><span class="gc-glyph">✌</span><span><strong>Two hands</strong> — spread apart / together to zoom</span></li>
-        <li><span class="gc-glyph">🤏</span><span><strong>Point</strong> at a planet, then <strong>pinch</strong> to dive in</span></li>
-      </ul>
-      <button class="gc-dismiss" id="gc-dismiss" type="button">Got it</button>
-      <span class="gc-hint">Press <kbd>Esc</kbd> anytime to exit</span>
+    <!-- Skippable stepped tutorial (first run only) -->
+    <div class="gesture-coach" id="gesture-coach" hidden>
+      <button class="gc-skip" id="gc-skip" type="button" aria-label="Skip tutorial">Skip ✕</button>
+      <span class="gc-eyebrow">★ JARVIS Mode · Tutorial</span>
+      <div class="gc-stage">
+        <div class="gc-glyph-big" id="gc-glyph">👋</div>
+        <h3 class="gc-title" id="gc-title">JARVIS Mode</h3>
+        <p class="gc-body" id="gc-body">Fly through the solar system with your hands.</p>
+      </div>
+      <div class="gc-dots" id="gc-dots"></div>
+      <div class="gc-nav">
+        <button class="gc-back" id="gc-back" type="button">Back</button>
+        <button class="gc-next" id="gc-next" type="button">Next</button>
+      </div>
+      <span class="gc-status" id="gc-sub">Initializing…</span>
     </div>
 
     <div class="gesture-hud" id="gesture-hud">

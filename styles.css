@@ -3239,22 +3239,33 @@ body[data-theme="focus"] { color: rgba(255,255,255,0.88); }
 .gesture-coach.dismissed { opacity: 0; transform: translate(-50%, -46%); pointer-events: none; }
 @keyframes gc-in { from { opacity: 0; transform: translate(-50%, -44%); } to { opacity: 1; transform: translate(-50%, -50%); } }
 .gc-eyebrow { font-family: var(--font-display); font-size: 0.68rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: #35d6ff; }
-.gc-title { font-family: var(--font-display); font-size: 1.3rem; margin: 0.5rem 0 0.4rem; color: #eaffff; }
-.gc-sub { font-size: 0.82rem; color: rgba(110, 231, 255, 0.75); margin: 0 0 1.1rem; }
-.gc-sub.ready { color: #35ffa0; }
-.gc-steps { list-style: none; padding: 0; margin: 0 0 1.25rem; display: flex; flex-direction: column; gap: 0.65rem; text-align: left; }
-.gc-steps li { display: flex; align-items: center; gap: 0.7rem; font-size: 0.82rem; color: rgba(234, 255, 255, 0.82); }
-.gc-steps strong { color: #fff; }
-.gc-glyph { font-size: 1.25rem; width: 1.8rem; text-align: center; flex-shrink: 0; filter: drop-shadow(0 0 6px rgba(53,214,255,0.5)); }
-.gc-dismiss {
-  font-family: var(--font-display); font-size: 0.8rem; font-weight: 600;
-  color: #04121a; background: #35d6ff; border: none;
-  padding: 0.5rem 1.4rem; border-radius: 999px; cursor: pointer;
-  transition: background 0.2s, box-shadow 0.2s;
+.gc-skip {
+  position: absolute; top: 0.85rem; right: 1rem;
+  background: none; border: none; cursor: pointer;
+  font-family: var(--font-display); font-size: 0.72rem; letter-spacing: 0.05em;
+  color: rgba(110, 231, 255, 0.55); transition: color 0.2s;
 }
-.gc-dismiss:hover { background: #6ee7ff; box-shadow: 0 0 16px rgba(53, 214, 255, 0.55); }
-.gc-hint { display: block; margin-top: 0.8rem; font-size: 0.68rem; color: rgba(110, 231, 255, 0.5); }
-.gc-hint kbd { font-family: var(--font-display); border: 1px solid rgba(110,231,255,0.3); border-radius: 4px; padding: 0.05rem 0.35rem; font-size: 0.9em; }
+.gc-skip:hover { color: #6ee7ff; }
+.gc-stage { min-height: 170px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.gc-glyph-big { font-size: 3.2rem; line-height: 1; margin: 0.6rem 0 0.7rem; filter: drop-shadow(0 0 14px rgba(53,214,255,0.55)); animation: gc-pop 0.35s ease-out; }
+@keyframes gc-pop { from { transform: scale(0.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+.gc-title { font-family: var(--font-display); font-size: 1.35rem; margin: 0 0 0.5rem; color: #eaffff; }
+.gc-body { font-size: 0.86rem; line-height: 1.5; color: rgba(234, 255, 255, 0.8); margin: 0; max-width: 300px; }
+.gc-dots { display: flex; justify-content: center; gap: 0.4rem; margin: 1.2rem 0; }
+.gc-dot { width: 7px; height: 7px; border-radius: 50%; background: rgba(110, 231, 255, 0.25); transition: background 0.25s, transform 0.25s; }
+.gc-dot.on { background: #35d6ff; transform: scale(1.3); box-shadow: 0 0 8px rgba(53,214,255,0.7); }
+.gc-nav { display: flex; gap: 0.6rem; justify-content: center; align-items: center; }
+.gc-back, .gc-next {
+  font-family: var(--font-display); font-size: 0.8rem; font-weight: 600;
+  padding: 0.5rem 1.2rem; border-radius: 999px; cursor: pointer; transition: background 0.2s, box-shadow 0.2s, opacity 0.2s;
+}
+.gc-back { background: none; border: 1px solid rgba(110,231,255,0.3); color: #6ee7ff; }
+.gc-back:hover { background: rgba(53,214,255,0.1); }
+.gc-back:disabled { opacity: 0.3; cursor: default; }
+.gc-next { background: #35d6ff; border: none; color: #04121a; }
+.gc-next:hover { background: #6ee7ff; box-shadow: 0 0 16px rgba(53, 214, 255, 0.55); }
+.gc-status { display: block; margin-top: 1rem; font-size: 0.7rem; color: rgba(110, 231, 255, 0.55); }
+.gc-status.ready { color: #35ffa0; }
 
 /* While exploring the system with gestures, lock the page so the solar
    scene owns the viewport (the camera is driven by hands, not scroll). */
