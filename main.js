@@ -672,15 +672,22 @@ function screenPickPlanet(x, y, px = 100) {
 }
 function exploreHover(id) { hoveredPlanetId = id; }
 
-// Section observer — when a section enters view, switch to that planet
+// Section observer — the section crossing the middle of the viewport is the
+// active planet. (A ratio threshold like 0.25 never fires for sections
+// taller than ~4 screens and fires late for tall ones, leaving the page
+// stuck in overview mode.)
 const sectionEls = document.querySelectorAll('main .section');
+let middleSectionId = null;
 const sectionObs = new IntersectionObserver(entries => {
-  let best = null;
-  entries.forEach(e => { if (e.isIntersecting && (!best || e.intersectionRatio > best.intersectionRatio)) best = e; });
-  if (!best) return;
-  const id = best.target.id;
+  entries.forEach(e => {
+    if (e.isIntersecting) middleSectionId = e.target.id;
+    else if (middleSectionId === e.target.id) middleSectionId = null;
+  });
+  const hit = entries.find(e => e.isIntersecting);
+  if (!hit) return;
+  const id = hit.target.id;
   if (PLANET_BY_ID[id]) { setMode('planet', id); refreshCameraTargets(); }
-}, { threshold: [0.25, 0.5, 0.75] });
+}, { rootMargin: '-45% 0px -45% 0px', threshold: 0 });
 sectionEls.forEach(el => sectionObs.observe(el));
 
 // Subsection cards: each card → its planet's moon. As the user scrolls
@@ -842,6 +849,10 @@ function animate() {
   } else {
     // Auto-pop back to overview if user scrolled into hero (and no click in flight)
     if (isInHeroZone() && mode === 'planet' && performance.now() > clickScrollUntil) setMode('overview');
+    // Scrolled back out of the hero into a section that never left the
+    // viewport middle (so the observer didn't re-fire) → re-enter its planet
+    else if (!isInHeroZone() && mode === 'overview' && middleSectionId && PLANET_BY_ID[middleSectionId]
+             && performance.now() > clickScrollUntil) setMode('planet', middleSectionId);
     if (mode === 'overview') refreshCameraTargets();
   }
 
@@ -877,6 +888,10 @@ function animate() {
     sunLabelEl.classList.toggle('visible', tmpVec.z < 1 && tmpVec.z > -1);
   } else {
     sunLabelEl.classList.remove('visible');
+    // Labels only belong on the hero's solar-system view. Once you scroll
+    // past it they'd otherwise freeze in place over the page content
+    // (positions stop updating) until a section switches to planet mode.
+    PLANETS.forEach(p => { if (p.label) p.label.style.visibility = 'hidden'; });
   }
 
   renderer.render(scene, camera);
