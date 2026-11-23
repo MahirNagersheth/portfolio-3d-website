@@ -474,7 +474,7 @@ sunLabelEl.className = 'sun-label';
 sunLabelEl.innerHTML = `
   <span class="sl-eyebrow">The Sun</span>
   <span class="sl-name">Mahir Nagersheth</span>
-  <span class="sl-sub">Carnegie Mellon <span class="sub-em">MISM</span> · Incoming <span class="sub-em">Goldman Sachs</span> Engineering Summer Analyst</span>`;
+  <span class="sl-sub">Data &amp; AI Engineer · Carnegie Mellon <span class="sub-em">MISM '26</span> · <span class="sub-em">Goldman Sachs</span> Risk Engineering</span>`;
 labelsRoot.appendChild(sunLabelEl);
 
 // Cache title elements (used by the 60%-above-readable-space trigger)
@@ -983,15 +983,29 @@ document.getElementById('theme-toggle')?.addEventListener('click', () => {
 });
 
 // ---------- Keyboard shortcuts ----------
-// 1–7 jump to each planet. Esc returns to the solar overview. T toggles theme.
+// 1–9 jump to each planet. Esc returns to the solar overview. T toggles theme.
 const KEY_TO_PLANET = ['work','education','projects','piano','entrepreneurship','nonprofit','writing','contact'];
+// Any modal / panel open? Then Escape should only close it — not also fly
+// back to the overview and scroll to the top. (This handler is registered
+// before the modal handlers, so their stopImmediatePropagation is too late.)
+const OVERLAY_IDS = ['cheatsheet','changelog-modal','yt-modal','search-palette','add-self-modal','ask-panel','gesture-overlay'];
+function anyOverlayOpen() {
+  return OVERLAY_IDS.some(id => { const el = document.getElementById(id); return el && !el.hasAttribute('hidden'); });
+}
 addEventListener('keydown', e => {
   const tag = (e.target?.tagName || '').toLowerCase();
   if (tag === 'input' || tag === 'textarea' || e.metaKey || e.ctrlKey || e.altKey) return;
-  if (e.key === 'Escape') { focusOverview(true); return; }
+  if (e.key === 'Escape') {
+    if (anyOverlayOpen()) {
+      // Ask panel has no Escape handler of its own — close it here.
+      document.getElementById('ask-panel')?.setAttribute('hidden', '');
+      return;
+    }
+    focusOverview(true); return;
+  }
   if (e.key === 't' || e.key === 'T') { document.getElementById('theme-toggle')?.click(); return; }
   const idx = parseInt(e.key, 10);
-  if (idx >= 1 && idx <= 8) {
+  if (idx >= 1 && idx <= KEY_TO_PLANET.length) {
     e.preventDefault();
     focusPlanet(KEY_TO_PLANET[idx - 1], true);
   }
@@ -1129,7 +1143,7 @@ const titleObs = new IntersectionObserver(entries => {
 document.querySelectorAll('.section-title').forEach(t => titleObs.observe(t));
 
 // Tab title — reflects current planet
-const BASE_TITLE = 'Mahir Nagersheth — CMU MISM • Goldman Sachs Engineering Summer Analyst';
+const BASE_TITLE = "Mahir Nagersheth — Data & AI Engineer • CMU MISM '26 • Goldman Sachs Risk Engineering";
 function updateTabTitle(planetId) {
   const p = planetId && PLANET_BY_ID[planetId];
   document.title = p ? `Mahir · ${p.name}` : BASE_TITLE;
@@ -1155,8 +1169,13 @@ function updateHash(planetId, subIdx) {
   }
   if (hash !== location.hash) history.replaceState(null, '', hash || location.pathname);
 }
+// Capture the incoming deep link *before* the loop below runs — the page
+// starts in overview mode, and the loop would otherwise wipe the hash
+// before the load handler gets a chance to read it.
+let pendingDeepLink = location.hash;
 // Tick continuously while on a planet — cheap, idempotent.
 (function deeplinkLoop() {
+  if (pendingDeepLink) { setTimeout(deeplinkLoop, 350); return; }
   if (mode === 'planet' && activePlanetId) {
     const p = PLANET_BY_ID[activePlanetId];
     updateHash(activePlanetId, Math.round(p?.smoothIdx || 0));
@@ -1168,7 +1187,9 @@ function updateHash(planetId, subIdx) {
 // Honor hash on initial load (after a brief moment so the scene is ready).
 addEventListener('load', () => {
   setTimeout(() => {
-    const m = location.hash.match(/^#([a-z-]+)(?:\/([a-z0-9-]+))?$/i);
+    const hash = pendingDeepLink;
+    pendingDeepLink = '';
+    const m = hash.match(/^#([a-z-]+)(?:\/([a-z0-9-]+))?$/i);
     if (!m) return;
     const planetId = m[1];
     if (!PLANET_BY_ID[planetId]) return;
@@ -1612,9 +1633,10 @@ addEventListener('keydown', e => {
 });
 addEventListener('keyup', e => { if (e.code === 'Space' && tourActive) tourStop(); });
 
-// ── F3: Per-section dynamic OG cards via Canvas API ─────────────
-const ogCanvas = Object.assign(document.createElement('canvas'), { width: 1200, height: 630 });
-const ogCtx = ogCanvas.getContext('2d');
+// ── F3: (removed) Per-section OG cards ──────────────────────────
+// Link-preview crawlers never run JavaScript, so rewriting og:image at
+// runtime had no effect on shared links — it only cost a 1200×630 PNG
+// encode on every section change. The static og-image.png is used instead.
 const OG_META = {
   work:           { label: 'Work Experience',   sub: 'Goldman Sachs · Risk Division',        color: '#d6b25e' },
   education:      { label: 'Education',          sub: 'Carnegie Mellon MISM · PDEU',          color: '#c41e3a' },
@@ -1624,32 +1646,6 @@ const OG_META = {
   nonprofit:      { label: 'Impact',             sub: 'TIDE Foundation · 7,000+ students',    color: '#4ed5cf' },
   writing:        { label: 'Notes & Writing',    sub: 'Long-form thoughts',                   color: '#9c8dc7' },
   contact:        { label: "Let's Talk",         sub: 'mnagersh@andrew.cmu.edu',               color: '#e0e0e0' },
-};
-function renderOGCard(sectionId) {
-  const meta = OG_META[sectionId]; if (!meta) return;
-  const ctx = ogCtx, W = 1200, H = 630;
-  ctx.clearRect(0, 0, W, H);
-  ctx.fillStyle = '#07080d'; ctx.fillRect(0, 0, W, H);
-  const grd = ctx.createRadialGradient(W * 0.55, H * 0.45, 0, W * 0.55, H * 0.45, 480);
-  grd.addColorStop(0, meta.color + '44'); grd.addColorStop(1, 'transparent');
-  ctx.fillStyle = grd; ctx.fillRect(0, 0, W, H);
-  ctx.textBaseline = 'middle';
-  ctx.fillStyle = 'rgba(255,255,255,0.32)'; ctx.font = '500 20px sans-serif';
-  ctx.fillText('MAHIR NAGERSHETH', 80, 230);
-  ctx.fillStyle = '#fff'; ctx.font = 'bold 62px sans-serif';
-  ctx.fillText(meta.label, 80, 305);
-  ctx.fillStyle = 'rgba(255,255,255,0.58)'; ctx.font = '400 28px sans-serif';
-  ctx.fillText(meta.sub, 80, 368);
-  ctx.fillStyle = meta.color; ctx.fillRect(80, 425, 110, 4);
-  const url = ogCanvas.toDataURL('image/png');
-  document.querySelectorAll('meta[property="og:image"],meta[name="twitter:image"]')
-    .forEach(m => m.setAttribute('content', url));
-}
-// Hook into setMode to update OG card whenever planet changes
-const _smOG = setMode;
-setMode = function(newMode, planetId) {
-  _smOG(newMode, planetId);
-  if (newMode === 'planet' && planetId) renderOGCard(planetId);
 };
 
 // ── F4: Changelog modal ──────────────────────────────────────────
@@ -1701,17 +1697,19 @@ addEventListener('keydown', e => {
 const PORTFOLIO_SYSTEM = `You are a concise AI assistant for Mahir Nagersheth's portfolio. Answer questions about Mahir using only the facts below. Keep answers to 2-4 sentences. If a question goes beyond these facts, say you don't have that info and suggest emailing mnagersh@andrew.cmu.edu.
 
 Facts:
-- CMU MISM student (Business Intelligence & Data Analytics), graduating December 2026, Pittsburgh PA
-- Incoming Goldman Sachs Engineering Summer Analyst, Risk Division, Dallas TX, June 2026
+- CMU MISM student (Business Intelligence & Data Analytics), in his final semester, graduating December 2026, Pittsburgh PA
+- Open to full-time data engineering, analytics, and AI engineering roles after graduation
+- U.S. work authorization: eligible for up to 3 years on STEM OPT; EAD application in process
+- Goldman Sachs Risk Engineering Summer Analyst, Dallas TX, June-August 2026: built a Python/SQL pipeline ingesting Snowflake data across 4 risk programs (cached in Parquet); automated Board reports with KPI calculations and Matplotlib charts; engineered LLM prompts on Snowflake risk data to generate insights; published reports to a SharePoint AI agent so stakeholders could query the data via chat
 - Published IEEE researcher: "Leveraging ML for Predicting Vehicle Fuel Efficiency", ICONAT 2024
-- Data Engineer at Rapidops Inc (Azure Data Factory, Synapse, Snowflake, Power BI, DAX, T-SQL)
+- Data Analyst Intern (Jan-May 2025) and Data Summer Intern (May-Jul 2024) at Rapidops Inc (Azure Data Factory, Synapse, Snowflake, Power BI, DAX, T-SQL)
 - Built 13-agent LangGraph Agentic Portfolio Management System (Groq, Streamlit, SQLite, human-in-the-loop)
 - Built Time-Adaptive Masked DiT + Optimal-Transport Flow for ImageNet-100 generation (PyTorch, FID eval)
 - Credit Risk Prediction App (XGBoost, ExtraTrees, GridSearchCV, Streamlit)
 - TIDE Foundation Project Manager: 85 volunteers, 14 schools, 20+ events, 7000+ students, raised ₹45,650
 - Pianist who performs and posts on YouTube
 - Languages: English, Hindi, Gujarati
-- Skills: Python, SQL, Azure, Snowflake, LangGraph, LLM agents, PyTorch, TensorFlow, scikit-learn, XGBoost, Streamlit, BeautifulSoup, SSIS
+- Skills: Python, SQL, PostgreSQL, T-SQL, R, Java, JavaScript; Snowflake, Azure Data Factory, Azure Synapse, Databricks, Spark, Kafka, Hadoop, ClickHouse, MongoDB, SSIS; Power BI, Tableau, time series forecasting (ARIMA, SARIMA, ETS, VAR); PyTorch, TensorFlow, LLMs, LangGraph, AI agents, Transformers, NLP, scikit-learn, XGBoost, Streamlit
 - Contact: mnagersh@andrew.cmu.edu | linkedin.com/in/mahir-nagersheth | github.com/MahirNagersheth`;
 
 const askBubble   = document.getElementById('ask-bubble');
@@ -1915,13 +1913,13 @@ PLANETS.forEach(p => {
       x.title.toLowerCase().includes(lq) || x.sub.toLowerCase().includes(lq)
     ).slice(0,8);
     focused = -1;
-    if (!hits.length) { spList.innerHTML = `<li class="sp-empty">No results for "${q}"</li>`; return; }
+    if (!hits.length) { spList.innerHTML = `<li class="sp-empty">No results for "${escFriendHtml(q)}"</li>`; return; }
     spList.innerHTML = hits.map((x, i) => `
       <li class="sp-result" data-i="${i}" role="option" tabindex="-1">
         <span class="sp-result-dot" style="background:${x.color}"></span>
         <span class="sp-result-text">
-          <span class="sp-result-title">${x.title}</span>
-          <span class="sp-result-sub">${x.sub}</span>
+          <span class="sp-result-title">${escFriendHtml(x.title)}</span>
+          <span class="sp-result-sub">${escFriendHtml(x.sub)}</span>
         </span>
         <kbd class="sp-result-kbd">↵</kbd>
       </li>`).join('');
@@ -2081,6 +2079,7 @@ if (typeof OG_META !== 'undefined') {
   const orbitLine = new THREE.Mesh(og, new THREE.MeshBasicMaterial({
     color: p.color, transparent: true, opacity: 0.18, side: THREE.DoubleSide, depthWrite: false,
   }));
+  orbitLine.scale.set(scale, scale, scale);
   incl.add(orbitLine);
   p.orbitLine = orbitLine;
 
@@ -2151,7 +2150,7 @@ function addNamedAsteroid(data) {
   // HTML overlay label
   const lbl = document.createElement('div');
   lbl.className = 'asteroid-label';
-  lbl.innerHTML = `<span class="al-emoji">${data.emoji || '⭐'}</span><span class="al-name">${escFriendHtml(data.name)}</span>`;
+  lbl.innerHTML = `<span class="al-emoji">${safeEmoji(data.emoji)}</span><span class="al-name">${escFriendHtml(data.name)}</span>`;
   lbl.style.visibility = 'hidden';
   labelsRoot.appendChild(lbl);
 
@@ -2162,7 +2161,21 @@ function addNamedAsteroid(data) {
 }
 
 function escFriendHtml(s) {
-  return String(s || '').replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]));
+  return String(s || '').replace(/[<>&"']/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'}[c]));
+}
+// Anyone can write to the guestbook DB, so only render emoji from the
+// picker's own list — anything else falls back to ⭐.
+const ALLOWED_FRIEND_EMOJI = new Set(['⭐','🌟','☄️','🪐','🌙','💫','🌻','🎹','❤️','🚀']);
+function safeEmoji(e) { return ALLOWED_FRIEND_EMOJI.has(e) ? e : '⭐'; }
+// Clamp DB entries to the same shape/limits the form enforces
+function sanitizeFriend(d) {
+  if (!d || typeof d.name !== 'string' || !d.name.trim()) return null;
+  return {
+    name: d.name.trim().slice(0, 25),
+    emoji: safeEmoji(d.emoji),
+    message: typeof d.message === 'string' ? d.message.trim().slice(0, 60) : '',
+    timestamp: Number.isFinite(d.timestamp) ? d.timestamp : 0,
+  };
 }
 
 // ── Particle burst when a new asteroid is added ──────────────────
@@ -2235,7 +2248,7 @@ function updateFriendsUI(data) {
           -Math.round((Date.now() - data.timestamp) / 60000), 'minutes')
       : '';
     card.innerHTML = `
-      <span class="ae-emoji">${escFriendHtml(data.emoji || '⭐')}</span>
+      <span class="ae-emoji">${safeEmoji(data.emoji)}</span>
       <strong class="ae-name">${escFriendHtml(data.name)}</strong>
       ${data.message ? `<p class="ae-message">${escFriendHtml(data.message)}</p>` : ''}
       <span class="ae-time">${relTime}</span>`;
@@ -2258,8 +2271,7 @@ function initFirebaseFriends() {
 
     // Listen for new entries (child_added fires for existing + future)
     friendsDbRef.on('child_added', snap => {
-      const d = snap.val(); if (!d || !d.name) return;
-      d._key = snap.key;
+      const d = sanitizeFriend(snap.val()); if (!d) return;
       updateFriendsUI(d);
     });
   } catch (e) {
@@ -2274,8 +2286,9 @@ function initLocalFriends() {
   document.getElementById('friends-setup-notice')?.removeAttribute('hidden');
 
   // Load from localStorage
-  const saved = JSON.parse(localStorage.getItem(FRIENDS_LS_KEY) || '[]');
-  saved.forEach(d => updateFriendsUI(d));
+  let saved = [];
+  try { saved = JSON.parse(localStorage.getItem(FRIENDS_LS_KEY) || '[]'); } catch (_) {}
+  (Array.isArray(saved) ? saved : []).map(sanitizeFriend).filter(Boolean).forEach(updateFriendsUI);
 }
 
 async function submitFriendAsteroid(data) {

@@ -90,11 +90,13 @@
     <text y="125" font-family="Inter, system-ui, sans-serif" font-size="22" font-weight="400" fill="#c8ccd5">
       Carnegie Mellon
       <tspan font-weight="600" fill="#ffffff"> MISM</tspan>
-      ·  Incoming
+      <tspan font-weight="600" fill="#ffffff"> '26</tspan>
+      ·
       <tspan font-weight="600" fill="#d6b25e"> Goldman Sachs</tspan>
+      Risk Engineering
     </text>
     <text y="155" font-family="Inter, system-ui, sans-serif" font-size="22" font-weight="400" fill="#c8ccd5">
-      Engineering Summer Analyst — Risk Division, Dallas
+      Data &amp; AI Engineer — open to full-time roles
     </text>
 
     <!-- Footer line -->

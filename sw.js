@@ -1,12 +1,13 @@
-// Network-first for HTML/JS (always get the latest code).
-// Cache-first for everything else (fonts, images, PDFs).
-const CACHE_VERSION = 'mn-portfolio-v10';
-const ALWAYS_FRESH = ['.html', '.js'];
+// Network-first for code + documents (HTML/JS/CSS/PDF) so updates — like a
+// new resume — reach returning visitors immediately; cache is the offline
+// fallback. Cache-first for heavy static media (images, fonts, video).
+const CACHE_VERSION = 'mn-portfolio-v11';
+const ALWAYS_FRESH = ['.html', '.js', '.css', '.pdf', '.json'];
 const STATIC_SHELL = [
   './styles.css',
   './resume.pdf',
   './avatar.png',
-  './og-image.svg',
+  './og-image.png',
   './icon-192.svg',
   './icon-512.svg',
   './manifest.json',
@@ -26,31 +27,31 @@ self.addEventListener('activate', (e) => {
   );
 });
 
+// Only cache complete, successful responses (no 404s, no 206 partials)
+function cachePut(req, res) {
+  if (!res || res.status !== 200 || res.type !== 'basic') return;
+  const copy = res.clone();
+  caches.open(CACHE_VERSION).then((c) => c.put(req, copy)).catch(() => {});
+}
+
 self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET' || new URL(e.request.url).origin !== location.origin) return;
+  // Let the browser handle media range requests (video seeking) natively
+  if (e.request.headers.has('range')) return;
 
   const url = new URL(e.request.url);
-  const alwaysFresh = ALWAYS_FRESH.some((ext) => url.pathname.endsWith(ext)) || url.pathname === '/';
+  const alwaysFresh = ALWAYS_FRESH.some((ext) => url.pathname.endsWith(ext)) || url.pathname.endsWith('/');
 
   if (alwaysFresh) {
-    // Network-first: try network, fall back to cache if offline
     e.respondWith(
-      fetch(e.request).then((res) => {
-        const copy = res.clone();
-        caches.open(CACHE_VERSION).then((c) => c.put(e.request, copy)).catch(() => {});
-        return res;
-      }).catch(() => caches.match(e.request))
+      fetch(e.request)
+        .then((res) => { cachePut(e.request, res); return res; })
+        .catch(() => caches.match(e.request))
     );
   } else {
-    // Cache-first: serve from cache, populate lazily on miss
     e.respondWith(
       caches.match(e.request).then((cached) =>
-        cached ||
-        fetch(e.request).then((res) => {
-          const copy = res.clone();
-          caches.open(CACHE_VERSION).then((c) => c.put(e.request, copy)).catch(() => {});
-          return res;
-        })
+        cached || fetch(e.request).then((res) => { cachePut(e.request, res); return res; })
       )
     );
   }

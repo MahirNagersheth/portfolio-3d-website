@@ -108,7 +108,8 @@ portfolio-3d-website/
 ├── avatar.png          # Headshot used in Contact section
 ├── icon-192.svg        # PWA icon (small)
 ├── icon-512.svg        # PWA icon (large)
-├── og-image.svg        # Open Graph / Twitter card preview image
+├── og-image.svg        # Source art for the link-preview card
+├── og-image.png        # Rendered 1200×630 Open Graph / Twitter card image
 ├── resume.pdf          # Linked from the site
 └── *.pdf               # Research papers linked from Projects section
 ```
@@ -178,23 +179,9 @@ window.FIREBASE_CONFIG = {
 
 5. Add `<script src="./config.js"></script>` to the `<head>` of `index.html` **before** the closing `</head>` tag (it's already there as a placeholder).
 
-### Recommended Realtime Database rules
+### Realtime Database rules
 
-```json
-{
-  "rules": {
-    "portfolio-friends-v1": {
-      "asteroids": {
-        ".read": true,
-        ".write": true,
-        "$asteroid": {
-          ".validate": "newData.hasChildren(['name','emoji','msg','ts','seed','angle','orbitR','color'])"
-        }
-      }
-    }
-  }
-}
-```
+Deploy the rules in [`database.rules.json`](database.rules.json) (Firebase console → Realtime Database → Rules → paste → Publish). They make the guestbook **append-only** (no edits or deletes from the browser), enforce the same field shapes and lengths the form uses (`name` ≤ 25, `emoji`, optional `message` ≤ 60, recent `timestamp`), reject unknown fields, and lock down every other path. To remove an unwanted entry, delete it from the Firebase console.
 
 > Without `config.js`, the feature still works — additions are saved to `localStorage` and visible only on that device.
 
@@ -216,4 +203,4 @@ MIT — feel free to fork and adapt for your own portfolio.
 
 ---
 
-*Built by [Mahir Nagersheth](https://github.com/MahirNagersheth) · CMU MISM · Incoming Goldman Sachs Engineering Summer Analyst*
+*Built by [Mahir Nagersheth](https://github.com/MahirNagersheth) · CMU MISM '26 · Goldman Sachs Risk Engineering Summer Analyst '26*
