@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>Asteroid Moderation · Mission Control</title>
+  <link rel="icon" href="icon-192.svg" type="image/svg+xml" />
+  <style>
+    :root { --bg:#07080d; --panel:#11141d; --fg:#e9ecf1; --dim:#a4adbe; --faint:#6b7382; --line:rgba(255,255,255,.1); --gold:#d6b25e; --ok:#4ad991; --bad:#ff6b6b; --cyan:#35d6ff; }
+    * { box-sizing: border-box; }
+    body { margin:0; min-height:100vh; background:radial-gradient(ellipse at 50% -20%, #1a1830, var(--bg) 60%); color:var(--fg); font:15px/1.5 Inter, system-ui, -apple-system, sans-serif; }
+    main { max-width: 760px; margin: 0 auto; padding: 3rem 1.25rem; }
+    h1 { font-size: 1.6rem; margin: 0 0 .25rem; }
+    .eyebrow { color: var(--cyan); font-size: .72rem; letter-spacing: .18em; text-transform: uppercase; }
+    .sub { color: var(--dim); margin: 0 0 2rem; }
+    button { font: inherit; cursor: pointer; border-radius: 999px; padding: .45rem 1rem; border: 1px solid var(--line); background: rgba(255,255,255,.04); color: var(--fg); }
+    button:hover { border-color: var(--faint); }
+    button:disabled { opacity: .5; cursor: default; }
+    .primary { background: linear-gradient(135deg, #c41e3a, var(--gold)); border-color: transparent; font-weight: 600; }
+    .approve { border-color: rgba(74,217,145,.5); color: var(--ok); }
+    .reject  { border-color: rgba(255,107,107,.5); color: var(--bad); }
+    .bar { display:flex; align-items:center; justify-content:space-between; gap:1rem; margin-bottom:1.5rem; flex-wrap:wrap; }
+    .who { color: var(--dim); font-size: .9rem; }
+    h2 { font-size: .8rem; letter-spacing: .16em; text-transform: uppercase; color: var(--gold); margin: 2rem 0 .75rem; }
+    ul { list-style: none; margin: 0; padding: 0; display: grid; gap: .6rem; }
+    li { display: flex; align-items: center; gap: 1rem; padding: .85rem 1rem; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); }
+    .emoji { font-size: 1.5rem; }
+    .info { flex: 1; min-width: 0; }
+    .name { font-weight: 600; }
+    .msg { color: var(--dim); font-size: .9rem; overflow-wrap: anywhere; }
+    .time { color: var(--faint); font-size: .78rem; }
+    .actions { display: flex; gap: .4rem; }
+    .empty { color: var(--faint); font-style: italic; }
+    .err { color: var(--bad); }
+  </style>
+</head>
+<body>
+  <main>
+    <span class="eyebrow">★ Mission Control</span>
+    <h1>Asteroid moderation</h1>
+    <p class="sub">Approve guestbook entries before they join the Friends &amp; Family belt. Only the portfolio owner's account can read or act on this queue.</p>
+
+    <div class="bar">
+      <span class="who" id="who">Not signed in</span>
+      <span>
+        <button class="primary" id="sign-in" type="button">Sign in with Google</button>
+        <button id="sign-out" type="button" hidden>Sign out</button>
+      </span>
+    </div>
+    <p class="err" id="err" hidden></p>
+
+    <section id="queues" hidden>
+      <h2>Awaiting approval <span id="pending-count"></span></h2>
+      <ul id="pending"></ul>
+      <h2>In orbit <span id="approved-count"></span></h2>
+      <ul id="approved"></ul>
+    </section>
+  </main>
+
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+  <script>
+    // Public web config (same as index.html) — access is enforced by database.rules.json
+    firebase.initializeApp({
+      apiKey:            "AIzaSyBltW__LCFY7DQd2LyGCVUq6ySL0jxMt7s",
+      authDomain:        "mahir-portfolio-74140.firebaseapp.com",
+      databaseURL:       "https://mahir-portfolio-74140-default-rtdb.firebaseio.com",
+      projectId:         "mahir-portfolio-74140",
+      storageBucket:     "mahir-portfolio-74140.firebasestorage.app",
+      messagingSenderId: "829768127929",
+      appId:             "1:829768127929:web:24de37de4cc2f478799268"
+    });
+    const ROOT = firebase.database().ref('portfolio-friends-v1');
+    const $ = id => document.getElementById(id);
+    const showErr = (msg) => { $('err').textContent = msg; $('err').hidden = !msg; };
+    let detach = [];
+
+    function row(key, d, kind) {
+      const li = document.createElement('li');
+      const emoji = Object.assign(document.createElement('span'), { className: 'emoji', textContent: d.emoji || '⭐' });
+      const info = Object.assign(document.createElement('div'), { className: 'info' });
+      info.append(
+        Object.assign(document.createElement('div'), { className: 'name', textContent: d.name || '(no name)' }),
+        Object.assign(document.createElement('div'), { className: 'msg', textContent: d.message || '' }),
+        Object.assign(document.createElement('div'), { className: 'time', textContent: d.timestamp ? new Date(d.timestamp).toLocaleString() : '' }),
+      );
+      const actions = Object.assign(document.createElement('div'), { className: 'actions' });
+      const act = (label, cls, fn) => {
+        const b = Object.assign(document.createElement('button'), { type: 'button', className: cls, textContent: label });
+        b.addEventListener('click', async () => {
+          b.disabled = true; showErr('');
+          try { await fn(); } catch (e) { showErr('Action failed: ' + e.message); b.disabled = false; }
+        });
+        actions.append(b);
+      };
+      const clean = { name: String(d.name || '').slice(0, 25), emoji: String(d.emoji || '⭐').slice(0, 4), timestamp: Number(d.timestamp) || Date.now() };
+      if (d.message) clean.message = String(d.message).slice(0, 60);
+      if (kind === 'pending') {
+        // Atomic move: pending → asteroids (keeps the same key, so the
+        // visitor's "in flight" asteroid is promoted rather than duplicated)
+        act('Approve', 'approve', () => ROOT.update({ ['asteroids/' + key]: clean, ['pending/' + key]: null }));
+        act('Reject', 'reject', () => ROOT.child('pending/' + key).remove());
+      } else {
+        act('Remove', 'reject', () => confirm(`Remove “${clean.name}” from the belt?`) ? ROOT.child('asteroids/' + key).remove() : Promise.resolve());
+      }
+      li.append(emoji, info, actions);
+      return li;
+    }
+
+    function watch(kind) {
+      const ref = ROOT.child(kind);
+      const handler = snap => {
+        const list = $(kind);
+        list.replaceChildren();
+        const entries = [];
+        snap.forEach(c => { entries.push([c.key, c.val() || {}]); });
+        entries.sort((a, b) => (b[1].timestamp || 0) - (a[1].timestamp || 0));
+        entries.forEach(([k, d]) => list.append(row(k, d, kind)));
+        if (!entries.length) list.append(Object.assign(document.createElement('li'), { className: 'empty', textContent: kind === 'pending' ? 'Queue is clear ✨' : 'No asteroids yet.' }));
+        $(kind === 'pending' ? 'pending-count' : 'approved-count').textContent = `(${entries.length})`;
+      };
+      ref.on('value', handler, e => showErr(`Can't read ${kind}: ${e.message}. Are the rules published and are you signed in with the owner account?`));
+      detach.push(() => ref.off('value', handler));
+    }
+
+    $('sign-in').addEventListener('click', () => {
+      firebase.auth().signInWithPopup(new firebase.auth.GoogleAuthProvider()).catch(e => showErr('Sign-in failed: ' + e.message));
+    });
+    $('sign-out').addEventListener('click', () => firebase.auth().signOut());
+
+    firebase.auth().onAuthStateChanged(user => {
+      detach.forEach(f => f()); detach = [];
+      $('sign-in').hidden = !!user;
+      $('sign-out').hidden = !user;
+      $('who').textContent = user ? `Signed in as ${user.email}` : 'Not signed in';
+      $('queues').hidden = !user;
+      showErr('');
+      if (user) { watch('pending'); watch('asteroids'); }
+    });
+  </script>
+</body>
+</html>

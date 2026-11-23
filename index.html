@@ -144,9 +144,14 @@
          a top-left availability chip and a slim bottom-center instruction. -->
     <section id="hero" class="solar-hero">
 
-      <!-- Top-left availability chip -->
-      <div class="solar-chip">
-        <span class="dot"></span>Open to full-time roles · Graduating Dec 2026
+      <!-- Top-left: availability chip + Mission Briefing -->
+      <div class="hero-actions">
+        <div class="solar-chip">
+          <span class="dot"></span>Open to full-time roles · Graduating Dec 2026
+        </div>
+        <button class="briefing-btn" type="button" data-open-briefing aria-haspopup="dialog">
+          <span class="briefing-radar" aria-hidden="true"></span>Mission briefing
+        </button>
       </div>
 
       <!-- Planet + sun labels (positions injected by JS each frame) -->
@@ -175,8 +180,25 @@
         <p class="section-sub">Where I've shipped — and where I'm headed next.</p>
       </div>
 
+      <!-- Flight recorder: the career path as a route through the system -->
+      <div class="flight-recorder reveal" id="flight-recorder">
+        <div class="fr-head">
+          <span class="fr-eyebrow">★ Flight recorder</span>
+          <button class="fr-play" id="fr-play" type="button">▶ Replay the journey</button>
+        </div>
+        <ol class="fr-track">
+          <li><button class="fr-stop" type="button" data-planet="education" data-card="1"><span class="fr-date">2021</span><span class="fr-name">PDEU</span><span class="fr-sub">B.Tech, Computer Engineering</span></button></li>
+          <li><button class="fr-stop" type="button" data-planet="work" data-card="2"><span class="fr-date">May 2024</span><span class="fr-name">Rapidops</span><span class="fr-sub">Data Summer Intern</span></button></li>
+          <li><button class="fr-stop" type="button" data-planet="work" data-card="1"><span class="fr-date">Jan 2025</span><span class="fr-name">Rapidops</span><span class="fr-sub">Data Analyst Intern</span></button></li>
+          <li><button class="fr-stop" type="button" data-planet="education" data-card="0"><span class="fr-date">Fall 2025</span><span class="fr-name">Carnegie Mellon</span><span class="fr-sub">MISM begins</span></button></li>
+          <li><button class="fr-stop" type="button" data-planet="work" data-card="0"><span class="fr-date">Jun 2026</span><span class="fr-name">Goldman Sachs</span><span class="fr-sub">Risk Engineering Summer Analyst</span></button></li>
+          <li><button class="fr-stop" type="button" data-planet="education" data-card="0"><span class="fr-date">Dec 2026</span><span class="fr-name">Graduation</span><span class="fr-sub">CMU MISM</span></button></li>
+          <li><button class="fr-stop fr-next" type="button" data-planet="contact"><span class="fr-date">2027</span><span class="fr-name">Next mission</span><span class="fr-sub">Your team?</span></button></li>
+        </ol>
+      </div>
+
       <!-- Goldman highlight card -->
-      <article class="work-card highlight reveal">
+      <article class="work-card highlight reveal" data-log="goldman" data-tags="python sql snowflake llm">
         <div class="work-card-glow goldman-glow"></div>
         <div class="work-card-meta">
           <span class="badge">Most recent</span>
@@ -200,7 +222,7 @@
       </article>
 
       <!-- Rapidops 1 -->
-      <article class="work-card reveal">
+      <article class="work-card reveal" data-log="rapidops" data-tags="adf synapse snowflake powerbi sql">
         <div class="work-card-meta">
           <span class="work-date">Jan 2025 — May 2025</span>
         </div>
@@ -222,7 +244,7 @@
       </article>
 
       <!-- Rapidops 2 -->
-      <article class="work-card reveal">
+      <article class="work-card reveal" data-tags="adf ssis sql">
         <div class="work-card-meta">
           <span class="work-date">May 2024 — Jul 2024</span>
         </div>
@@ -456,7 +478,7 @@
       <div class="project-grid">
 
         <!-- Featured · Agentic Portfolio Management System (CMU Agentic Studio, Spring 2026) -->
-        <article class="project-card featured-project reveal" data-tags="python ml agents langgraph llm streamlit web-app">
+        <article class="project-card featured-project reveal" data-log="agentic" data-tags="python ml agents langgraph llm streamlit web-app">
           <span class="project-tag featured-tag">Featured · CMU Agentic Studio</span>
           <h3>AI-Powered Agentic Portfolio Management System</h3>
           <p>
@@ -482,7 +504,7 @@
         </article>
 
         <!-- Featured · Time-Adaptive Masked DiT (CMU, with NeurIPS-style report) -->
-        <article class="project-card featured-project reveal" data-tags="python deep-learning pytorch generative-models diffusion">
+        <article class="project-card featured-project reveal" data-log="dit" data-tags="python deep-learning tensorflow generative-models diffusion">
           <span class="project-tag featured-tag">Featured · Deep Generative Models</span>
           <h3>Time-Adaptive Masked DiT × Optimal-Transport Flow</h3>
           <p>
@@ -502,12 +524,12 @@
           <div class="project-links">
             <a href="https://github.com/MahikaGunjkar/Hw5DiffusionTeam6" target="_blank" rel="noopener">View on GitHub →</a>
             <a href="https://youtu.be/hQw28E0EF9Q" target="_blank" rel="noopener">Project walkthrough →</a>
-            <a href="neurips-2019-paper.pdf" target="_blank" rel="noopener">Read the report (PDF) →</a>
+            <a href="dit-ot-flow-report.pdf" target="_blank" rel="noopener">Read the report (PDF) →</a>
           </div>
           <p class="project-credits">With Zhixuan Jiang &amp; Mahika Gunjkar · Carnegie Mellon</p>
         </article>
 
-        <article class="project-card reveal" data-tags="python ml scikit pandas">
+        <article class="project-card reveal" data-log="fuel" data-tags="python ml scikit pandas">
           <span class="project-tag published">Published · IEEE Xplore</span>
           <h3>Predicting Vehicle Fuel Efficiency with ML</h3>
           <p>Six algorithms compared (Random Forest, KNN, Decision Tree, SVM, Linear &amp; Ridge). Decision Tree winner at RMSE 2.75. Presented at ICONAT 2024, published Dec 2024.</p>
@@ -517,7 +539,7 @@
           </div>
         </article>
 
-        <article class="project-card reveal" data-tags="python deep-learning tensorflow pytorch cnn">
+        <article class="project-card reveal" data-log="knee" data-tags="python deep-learning tensorflow cnn">
           <span class="project-tag">Deep Learning</span>
           <h3>Knee Arthritis Detection · Multi-CNN</h3>
           <p>Diagnostic model fusing ResNet101, VGG16/19, DenseNet121, MobileNetV2. Hit 98% accuracy and 0.97 AUC for early-stage detection.</p>
@@ -527,7 +549,7 @@
           </div>
         </article>
 
-        <article class="project-card reveal" data-tags="python ml xgboost streamlit web-app" style="grid-column: 1 / -1">
+        <article class="project-card reveal" data-log="credit" data-tags="python ml xgboost scikit streamlit web-app" style="grid-column: 1 / -1">
           <span class="project-tag">Deployed App</span>
           <h3>Credit Risk Prediction App</h3>
           <p>Tree-based classifiers (DT, RF, ExtraTrees, XGBoost) tuned with GridSearchCV, with EDA + feature engineering for class imbalance. Streamlit front-end.</p>
@@ -591,13 +613,14 @@
            the rest dim. The mapping uses data-tags on each project-card above. -->
       <div class="skills-constellation reveal">
         <div class="sc-head">
-          <span class="sc-eyebrow">★ Stack</span>
-          <span class="sc-hint">Hover any skill to highlight related projects</span>
+          <span class="sc-eyebrow">★ Constellation</span>
+          <span class="sc-hint">Hover a star — lines connect skills used together; matching work lights up</span>
         </div>
         <div class="sc-grid">
           <button class="sc-chip" data-tag="python">Python</button>
           <button class="sc-chip" data-tag="sql">SQL · T-SQL · PostgreSQL</button>
           <button class="sc-chip" data-tag="ml">Machine Learning</button>
+          <button class="sc-chip" data-tag="llm">LLMs · LangGraph · Agents</button>
           <button class="sc-chip" data-tag="deep-learning">Deep Learning</button>
           <button class="sc-chip" data-tag="tensorflow">TensorFlow · PyTorch</button>
           <button class="sc-chip" data-tag="scikit">scikit-learn</button>
@@ -1109,7 +1132,7 @@
           <span class="fab-icon">✦</span>
           Add yourself as an asteroid
         </button>
-        <p class="friends-hint">Your name and emoji become a real 3D asteroid orbiting this planet — visible to everyone who visits.</p>
+        <p class="friends-hint">Your name and emoji streak in as a comet and become a 3D asteroid orbiting this planet — visible to everyone once Mahir approves it.</p>
       </div>
 
       <!-- Setup notice (shown only when Firebase not configured) -->
@@ -1126,13 +1149,10 @@
         <p class="section-sub">Recruiting, collaborating, or just want to swap notes? My inbox is open.</p>
       </div>
 
-      <!-- Profile card — photo + philosophy. Drop your photo at "avatar.jpg"
-           in this folder to replace the initials. -->
+      <!-- Profile card — photo + philosophy -->
       <article class="profile-card reveal">
-        <div class="profile-avatar" role="img" aria-label="Mahir Nagersheth">
-          <!-- The initials are the default. Once you save your headshot at
-               ./avatar.jpg, the JS below swaps it in. -->
-          <span class="profile-initials">MN</span>
+        <div class="profile-avatar">
+          <img class="profile-photo" src="avatar.jpg" alt="Mahir Nagersheth" width="110" height="110" loading="lazy" decoding="async">
         </div>
         <div class="profile-body">
           <h3 class="profile-name">Mahir Nagersheth</h3>
@@ -1141,6 +1161,7 @@
             <span class="dot-sep">·</span>
             <span><em>Goldman Sachs</em> Risk Engineering '26</span>
           </p>
+          <button class="briefing-inline" type="button" data-open-briefing>📡 Mission briefing — the 30-second version</button>
           <p class="profile-philosophy">
             "I build data systems that turn enterprise mess into faster, better
             decisions — and I believe education is the highest-leverage product
@@ -1227,6 +1248,45 @@
 
   </main>
 
+  <!-- Mission Briefing — one-screen recruiter summary -->
+  <div class="cheatsheet briefing-modal" id="briefing-modal" role="dialog" aria-modal="true" aria-labelledby="bf-title" hidden>
+    <div class="cs-backdrop" data-close></div>
+    <div class="cs-panel briefing-panel" tabindex="-1" data-autofocus>
+      <button class="cs-close" type="button" data-close aria-label="Close briefing">×</button>
+      <span class="bf-eyebrow"><span class="briefing-radar" aria-hidden="true"></span>Mission briefing · Nov 2026</span>
+      <h3 class="bf-title" id="bf-title">Mahir Nagersheth</h3>
+      <p class="bf-role">Data &amp; AI Engineer · Carnegie Mellon MISM '26</p>
+      <dl class="bf-facts">
+        <div><dt>Objective</dt><dd>Full-time data engineering, analytics &amp; AI engineering roles</dd></div>
+        <div><dt>Available</dt><dd>After graduating in December 2026</dd></div>
+        <div><dt>Work authorization</dt><dd>STEM OPT — up to 3 years (EAD in process)</dd></div>
+        <div><dt>Base</dt><dd>Pittsburgh, PA</dd></div>
+      </dl>
+      <h4 class="bf-label">Top missions</h4>
+      <ul class="bf-wins">
+        <li><strong>Goldman Sachs · Risk Engineering (Summer 2026):</strong> built a Python/SQL pipeline over Snowflake for 4 risk programs, automated Board reporting, and paired KPIs with LLM-generated insights served through a SharePoint AI agent.</li>
+        <li><strong>Rapidops · Data:</strong> Azure Data Factory + Synapse pipelines over 50K+ daily records; query latency down 35%, refresh latency down 15%.</li>
+        <li><strong>AI &amp; research:</strong> 13-agent LangGraph portfolio system with human-in-the-loop risk controls, backtested across 3 market stress periods · IEEE-published ML research (ICONAT 2024).</li>
+      </ul>
+      <p class="bf-stack"><strong>Core stack:</strong> Python · SQL · Snowflake · Azure Data Factory / Synapse · Spark · Power BI · PyTorch · LLMs &amp; LangGraph</p>
+      <div class="bf-actions">
+        <a class="bf-primary" href="resume.pdf?v=2026-11" download="Mahir-Nagersheth-Resume.pdf">Download resume</a>
+        <a class="bf-secondary" href="mailto:mnagersh@andrew.cmu.edu">Email</a>
+        <a class="bf-secondary" href="https://linkedin.com/in/mahir-nagersheth" target="_blank" rel="noopener">LinkedIn</a>
+        <button class="bf-ghost" type="button" data-close>Explore the system →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Mission log — case study behind a work / project card (filled by features.js) -->
+  <div class="cheatsheet log-modal" id="log-modal" role="dialog" aria-modal="true" aria-labelledby="log-title" hidden>
+    <div class="cs-backdrop" data-close></div>
+    <div class="cs-panel log-panel" tabindex="-1" data-autofocus>
+      <button class="cs-close" type="button" data-close aria-label="Close mission log">×</button>
+      <div id="log-body"></div>
+    </div>
+  </div>
+
   <!-- Keyboard shortcut cheatsheet modal (toggle with `?`) -->
   <div class="cheatsheet" id="cheatsheet" role="dialog" aria-modal="true" aria-labelledby="cs-title" hidden>
     <div class="cs-backdrop" data-close="1"></div>
@@ -1236,6 +1296,7 @@
       <p class="cs-sub">Fly the cosmos without the trackpad.</p>
       <dl class="cs-list">
         <div class="cs-row"><dt><kbd>1</kbd>–<kbd>9</kbd></dt><dd>Jump to a planet · 1 Work, 2 Education, 3 Projects, 4 Piano, 5 Ventures, 6 Impact, 7 Notes, 8 Friends, 9 Contact</dd></div>
+        <div class="cs-row"><dt><kbd>B</kbd></dt><dd>Mission briefing — the 30-second summary</dd></div>
         <div class="cs-row"><dt><kbd>Esc</kbd></dt><dd>Return to the solar overview</dd></div>
         <div class="cs-row"><dt><kbd>T</kbd></dt><dd>Cycle theme — night → day → focus (no 3D)</dd></div>
         <div class="cs-row"><dt><kbd>M</kbd></dt><dd>Mute / unmute ambient audio</dd></div>
@@ -1254,7 +1315,7 @@
       <button class="asm-close" id="asm-close" type="button" aria-label="Close">×</button>
       <div class="asm-comet" aria-hidden="true">☄️</div>
       <h3 id="asm-title" class="asm-title">Join the asteroid belt</h3>
-      <p class="asm-sub">Your asteroid will appear on the Friends &amp; Family planet in real time for everyone visiting Mahir's portfolio.</p>
+      <p class="asm-sub">You'll see your asteroid right away. It joins the belt for everyone visiting Mahir's portfolio once he approves it.</p>
       <form id="add-self-form" novalidate>
         <div class="asm-field">
           <label for="add-self-name">Your name <span class="asm-req">*</span></label>
@@ -1295,6 +1356,11 @@
       <h3 id="cl-title" class="cl-title">Changelog</h3>
       <p class="cl-sub">This portfolio is a living document — actively maintained.</p>
       <ol class="cl-timeline" reversed>
+        <li class="cl-entry">
+          <span class="cl-date">Nov 2026</span>
+          <strong>v2.2 — Mission Control</strong>
+          <p>Mission briefing, mission logs, skills constellation, flight recorder, streaming Ask Mahir with memory, comet guestbook with moderation, lite mode, and faster loading.</p>
+        </li>
         <li class="cl-entry">
           <span class="cl-date">Nov 2026</span>
           <strong>v2.1 — Post-Goldman Update</strong>
@@ -1339,7 +1405,13 @@
       <button class="ask-close" id="ask-close" type="button" aria-label="Close chat">×</button>
     </div>
     <div class="ask-messages" id="ask-messages" aria-live="polite">
-      <div class="ask-msg assistant">Hi! I'm an AI trained on Mahir's portfolio. Ask me about his work, skills, research, or why he plays piano at 2am.</div>
+      <div class="ask-msg assistant">Hi! I'm an AI assistant that knows Mahir's portfolio. Ask me about his work, skills, projects, or availability.</div>
+    </div>
+    <div class="ask-starters" id="ask-starters">
+      <button type="button">What did he build at Goldman Sachs?</button>
+      <button type="button">Is he authorized to work in the US?</button>
+      <button type="button">What's his strongest AI project?</button>
+      <button type="button">When can he start full-time?</button>
     </div>
     <div class="ask-input-row">
       <input type="text" id="ask-input" class="ask-input" placeholder="Ask something…" maxlength="200" autocomplete="off">
@@ -1422,8 +1494,12 @@
       appId:             "1:829768127929:web:24de37de4cc2f478799268"
     };
     window.ASK_WORKER_URL = "https://mahir-portfolio-proxy.mnagersh.workers.dev";
+    // Free, cookieless analytics: create a site at goatcounter.com and put
+    // its code here (e.g. "mahir"). Empty = analytics off.
+    window.GOATCOUNTER_CODE = "";
   </script>
   <script src="config.js" onerror="void 0"></script>
   <script src="main.js"></script>
+  <script src="features.js"></script>
 </body>
 </html>

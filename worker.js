@@ -7,14 +7,17 @@
 const ALLOWED_ORIGINS = ['https://mahirnagersheth.github.io'];
 const LOCAL_HOSTS = ['localhost', '127.0.0.1'];
 
-// The chat proxy only ever runs this one small model with a capped budget,
+// The chat proxy only ever runs these small models with a capped budget,
 // whatever the client sends — so a leaked/abused endpoint can't burn the
-// Groq key on big models or long generations.
-const CHAT_MODEL = 'llama-3.1-8b-instant';
-const MAX_TOKENS = 300;
-const MAX_MESSAGES = 4;          // system + a short exchange
-const MAX_SYSTEM_CHARS = 4000;
+// Groq key on big models or long generations. If Groq retires a model
+// (model_not_found), the next one in the list is tried automatically.
+// Override with a CHAT_MODEL variable in the Worker settings if needed.
+const CHAT_MODELS = ['openai/gpt-oss-20b', 'openai/gpt-oss-120b', 'llama-3.1-8b-instant'];
+const MAX_TOKENS = 400;
+const MAX_MESSAGES = 8;          // system + up to 3 remembered Q&A pairs + the new question
+const MAX_SYSTEM_CHARS = 6000;
 const MAX_USER_CHARS = 500;
+const MAX_ASSISTANT_CHARS = 2000; // earlier answers echoed back as history
 
 // Exact origin match (a prefix check would also accept
 // https://mahirnagersheth.github.io.evil.com). Any port on localhost is
@@ -37,8 +40,10 @@ function sanitizeChatBody(body) {
     if (!m || typeof m.content !== 'string') return null;
     if (m.role === 'system') {
       if (m.content.length > MAX_SYSTEM_CHARS) return null;
-    } else if (m.role === 'user' || m.role === 'assistant') {
+    } else if (m.role === 'user') {
       if (m.content.length > MAX_USER_CHARS) return null;
+    } else if (m.role === 'assistant') {
+      if (m.content.length > MAX_ASSISTANT_CHARS) return null;
     } else {
       return null;
     }
@@ -46,10 +51,10 @@ function sanitizeChatBody(body) {
   }
   const temp = Number(body.temperature);
   return {
-    model: CHAT_MODEL,
     messages: clean,
     max_tokens: Math.min(MAX_TOKENS, Math.max(1, Number(body.max_tokens) || MAX_TOKENS)),
     temperature: Number.isFinite(temp) ? Math.min(1, Math.max(0, temp)) : 0.7,
+    stream: body.stream === true,
   };
 }
 
@@ -95,14 +100,33 @@ export default {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
-      const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${env.GROQ_API_KEY}`,
-        },
-        body: JSON.stringify(body),
-      });
+      const models = env.CHAT_MODEL ? [env.CHAT_MODEL, ...CHAT_MODELS] : CHAT_MODELS;
+      let res;
+      for (const model of models) {
+        const payload = { ...body, model };
+        if (model.startsWith('openai/gpt-oss')) {   // reasoning models: short, hidden reasoning
+          payload.reasoning_effort = 'low';
+          payload.include_reasoning = false;
+        }
+        res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${env.GROQ_API_KEY}`,
+          },
+          body: JSON.stringify(payload),
+        });
+        if (res.status !== 404 && res.status !== 400) break;
+        const err = await res.clone().json().catch(() => ({}));
+        if (err?.error?.code !== 'model_not_found') break;   // a real error — don't mask it
+      }
+      // Streaming: pipe Groq's server-sent events straight through
+      if (body.stream && res.ok && res.body) {
+        return new Response(res.body, {
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' },
+        });
+      }
       const data = await res.json();
       return new Response(JSON.stringify(data), {
         status: res.status,

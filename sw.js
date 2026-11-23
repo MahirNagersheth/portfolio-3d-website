@@ -1,12 +1,12 @@
 // Network-first for code + documents (HTML/JS/CSS/PDF) so updates — like a
 // new resume — reach returning visitors immediately; cache is the offline
 // fallback. Cache-first for heavy static media (images, fonts, video).
-const CACHE_VERSION = 'mn-portfolio-v11';
+const CACHE_VERSION = 'mn-portfolio-v12';
 const ALWAYS_FRESH = ['.html', '.js', '.css', '.pdf', '.json'];
 const STATIC_SHELL = [
   './styles.css',
   './resume.pdf',
-  './avatar.png',
+  './avatar.jpg',
   './og-image.png',
   './icon-192.svg',
   './icon-512.svg',

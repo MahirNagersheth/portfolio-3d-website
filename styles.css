@@ -1572,90 +1572,6 @@ body[data-theme="day"] .writing-card {
     linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(254, 235, 214, 0.62));
 }
 
-/* Live-from-GitHub feed in Projects */
-.github-feed {
-  margin-top: 2.5rem;
-  padding: 1.5rem 1.75rem;
-  border: 1px dashed var(--line-strong);
-  border-radius: var(--radius);
-  background: rgba(255, 255, 255, 0.02);
-}
-.github-feed .gh-head {
-  display: flex; align-items: center; justify-content: space-between;
-  margin-bottom: 1rem;
-  flex-wrap: wrap; gap: 0.5rem;
-}
-.github-feed .gh-eye {
-  font-family: var(--font-display);
-  font-size: 0.78rem;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--accent-soft);
-}
-.github-feed .gh-handle {
-  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
-  font-size: 0.78rem;
-  color: var(--fg-faint);
-}
-.github-feed .gh-empty {
-  color: var(--fg-dim);
-  font-size: 0.9rem;
-  margin: 0;
-  line-height: 1.6;
-}
-.github-feed .gh-empty code {
-  background: rgba(255, 255, 255, 0.06);
-  padding: 0.1rem 0.4rem;
-  border-radius: 4px;
-  font-size: 0.86em;
-}
-.github-feed .gh-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 0.75rem;
-}
-.github-feed .gh-repo {
-  display: block;
-  padding: 0.85rem 1rem;
-  border-radius: var(--radius);
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid var(--line);
-  color: var(--fg);
-  text-decoration: none;
-  transition: transform 0.25s ease, border-color 0.25s ease;
-}
-.github-feed .gh-repo:hover { transform: translateY(-2px); border-color: var(--accent); }
-.github-feed .gh-name {
-  font-family: var(--font-display);
-  font-weight: 600;
-  font-size: 0.95rem;
-  margin: 0 0 0.3rem;
-}
-.github-feed .gh-desc {
-  font-size: 0.82rem;
-  color: var(--fg-dim);
-  margin: 0 0 0.55rem;
-  line-height: 1.45;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-.github-feed .gh-meta {
-  display: flex; gap: 0.7rem; align-items: center;
-  font-size: 0.72rem;
-  color: var(--fg-faint);
-}
-.github-feed .gh-meta .lang {
-  display: inline-flex; align-items: center; gap: 0.3rem;
-}
-.github-feed .gh-meta .lang::before {
-  content: ''; width: 7px; height: 7px; border-radius: 50%;
-  background: var(--accent); display: inline-block;
-}
-body[data-theme="day"] .github-feed { background: rgba(255, 255, 255, 0.5); }
-body[data-theme="day"] .github-feed .gh-repo { background: rgba(255, 255, 255, 0.65); }
-
 /* Audio + help nav toggles (sit beside the theme toggle) */
 .audio-toggle, .help-toggle {
   position: relative;
@@ -2023,7 +1939,7 @@ body[data-theme="day"] .sc-chip { background: rgba(255, 255, 255, 0.7); }
 @media print {
   #bg-canvas, .bokeh, .nav, .planet-labels, .back-button, .solar-chip,
   .solar-instructions, .sun-label, .audio-toggle, .help-toggle,
-  .theme-toggle, .cheatsheet, .github-feed, .skills-constellation .sc-hint {
+  .theme-toggle, .cheatsheet, .skills-constellation .sc-hint {
     display: none !important;
   }
   body, body[data-theme="day"] {
@@ -3270,3 +3186,320 @@ body[data-theme="focus"] { color: rgba(255,255,255,0.88); }
 /* While exploring the system with gestures, lock the page so the solar
    scene owns the viewport (the camera is driven by hands, not scroll). */
 body.gesture-active { overflow: hidden; }
+
+/* ================================================================
+   MISSION CONTROL (v2.2) — briefing, mission logs, constellation,
+   flight recorder, Ask starters, moderated guestbook
+   ================================================================ */
+
+/* Hero: availability chip + Mission Briefing button share one row */
+.hero-actions {
+  position: fixed; top: 5.5rem; left: 2.5rem; z-index: 4;
+  display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;
+  transition: opacity 0.6s ease, transform 0.6s ease;
+}
+.hero-actions .solar-chip { position: static; }
+.hero-actions.scrolled-past { opacity: 0; transform: translateY(-10px); pointer-events: none; }
+.briefing-btn {
+  display: inline-flex; align-items: center; gap: 0.55rem;
+  padding: 0.45rem 0.95rem;
+  border-radius: 999px;
+  font-size: 0.74rem; letter-spacing: 0.06em;
+  color: var(--fg);
+  background: rgba(53, 214, 255, 0.08);
+  border: 1px solid rgba(53, 214, 255, 0.35);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  opacity: 0; animation: chip-in 1s ease-out 0.6s both;
+  transition: background 0.2s, border-color 0.2s, box-shadow 0.2s;
+}
+.briefing-btn:hover, .briefing-btn:focus-visible {
+  background: rgba(53, 214, 255, 0.16);
+  border-color: rgba(53, 214, 255, 0.7);
+  box-shadow: 0 0 18px rgba(53, 214, 255, 0.25);
+}
+.briefing-radar {
+  position: relative; width: 9px; height: 9px; border-radius: 50%;
+  background: #35d6ff; box-shadow: 0 0 8px rgba(53, 214, 255, 0.8);
+  flex: none;
+}
+.briefing-radar::after {
+  content: ''; position: absolute; inset: -5px; border-radius: 50%;
+  border: 1px solid rgba(53, 214, 255, 0.6);
+  animation: radar-ping 2s ease-out infinite;
+}
+@keyframes radar-ping { from { transform: scale(0.4); opacity: 1; } to { transform: scale(1.6); opacity: 0; } }
+.briefing-inline {
+  margin: 0.2rem 0 0.9rem;
+  padding: 0.35rem 0.8rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  color: #8fe6ff;
+  border: 1px dashed rgba(53, 214, 255, 0.4);
+  transition: background 0.2s, border-color 0.2s;
+}
+.briefing-inline:hover { background: rgba(53, 214, 255, 0.08); border-color: rgba(53, 214, 255, 0.7); }
+
+/* Shared wide panel for briefing + logs (inherits .cs-panel look) */
+.briefing-panel, .log-panel {
+  width: min(94vw, 640px);
+  max-height: min(88vh, 820px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.bf-eyebrow, .log-eyebrow {
+  display: inline-flex; align-items: center; gap: 0.55rem;
+  font-family: var(--font-display);
+  font-size: 0.72rem; letter-spacing: 0.18em; text-transform: uppercase;
+  color: #8fe6ff;
+}
+.bf-title, .log-title {
+  font-family: var(--font-display);
+  font-size: 1.7rem; font-weight: 700; line-height: 1.2;
+  margin: 0.6rem 0 0.2rem;
+}
+.bf-role, .log-meta { margin: 0 0 1.2rem; color: var(--fg-dim); font-size: 0.92rem; }
+.bf-facts {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.6rem;
+  margin: 0 0 1.4rem;
+}
+.bf-facts div {
+  padding: 0.65rem 0.8rem;
+  border: 1px solid var(--line); border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+}
+.bf-facts dt { font-size: 0.68rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--fg-faint); }
+.bf-facts dd { margin: 0.2rem 0 0; font-size: 0.88rem; color: var(--fg); }
+.bf-label, .log-label {
+  font-family: var(--font-display);
+  font-size: 0.72rem; letter-spacing: 0.16em; text-transform: uppercase;
+  color: var(--goldman);
+  margin: 0 0 0.6rem;
+}
+.bf-wins, .log-list { margin: 0 0 1.2rem; display: grid; gap: 0.55rem; }
+.bf-wins li, .log-list li {
+  position: relative; padding-left: 1.1rem;
+  font-size: 0.9rem; color: var(--fg-dim); line-height: 1.55;
+}
+.bf-wins li::before, .log-list li::before {
+  content: ''; position: absolute; left: 0; top: 0.6em;
+  width: 5px; height: 5px; border-radius: 50%;
+  background: var(--goldman); box-shadow: 0 0 8px var(--goldman-glow);
+}
+.bf-wins strong { color: var(--fg); }
+.bf-stack { font-size: 0.86rem; color: var(--fg-dim); margin: 0 0 1.4rem; }
+.bf-stack strong { color: var(--fg); }
+.bf-actions { display: flex; flex-wrap: wrap; gap: 0.55rem; }
+.bf-actions a, .bf-actions button {
+  padding: 0.55rem 1rem; border-radius: 999px; font-size: 0.85rem;
+  border: 1px solid var(--line-strong);
+  transition: background 0.2s, border-color 0.2s, transform 0.2s;
+}
+.bf-primary { background: linear-gradient(135deg, var(--cmu), var(--goldman)); border-color: transparent !important; color: #fff; font-weight: 600; }
+.bf-primary:hover { transform: translateY(-1px); }
+.bf-secondary:hover, .bf-ghost:hover { background: rgba(255, 255, 255, 0.06); border-color: var(--fg-faint); }
+.bf-ghost { color: var(--fg-dim); border-style: dashed !important; }
+
+/* Mission log */
+.log-sec { margin-bottom: 1.2rem; }
+.log-mission {
+  margin: 0; padding: 0.8rem 1rem;
+  border-left: 2px solid var(--goldman);
+  background: rgba(214, 178, 94, 0.06);
+  border-radius: 0 10px 10px 0;
+  color: var(--fg); font-size: 0.95rem;
+}
+.log-outcomes { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.log-outcome {
+  padding: 0.45rem 0.8rem; border-radius: 10px;
+  font-size: 0.85rem; color: #b8ffd9;
+  background: rgba(74, 217, 145, 0.08);
+  border: 1px solid rgba(74, 217, 145, 0.3);
+}
+.log-stack { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.log-stack span {
+  padding: 0.25rem 0.65rem; border-radius: 999px; font-size: 0.78rem;
+  color: var(--fg-dim); border: 1px solid var(--line); background: rgba(255, 255, 255, 0.03);
+}
+.log-links { display: flex; flex-wrap: wrap; gap: 1rem; margin-top: 0.4rem; }
+.log-links a { color: #8fe6ff; font-size: 0.88rem; }
+.log-links a:hover { text-decoration: underline; }
+.log-note { margin: 1rem 0 0; font-size: 0.78rem; font-style: italic; color: var(--fg-faint); }
+.log-btn {
+  display: inline-flex; align-items: center; gap: 0.5rem;
+  margin-top: 1rem;
+  padding: 0.4rem 0.85rem;
+  border-radius: 999px;
+  font-size: 0.78rem; letter-spacing: 0.04em;
+  color: #8fe6ff;
+  border: 1px solid rgba(53, 214, 255, 0.3);
+  background: rgba(53, 214, 255, 0.05);
+  transition: background 0.2s, border-color 0.2s, transform 0.2s;
+}
+.log-btn:hover, .log-btn:focus-visible { background: rgba(53, 214, 255, 0.12); border-color: rgba(53, 214, 255, 0.65); transform: translateY(-1px); }
+.log-btn-dot { width: 6px; height: 6px; border-radius: 50%; background: #35d6ff; box-shadow: 0 0 8px #35d6ff; }
+
+/* Constellation map */
+.skills-constellation .sc-grid { position: relative; gap: 0.75rem 0.9rem; }
+.sc-lines { position: absolute; inset: 0; pointer-events: none; overflow: visible; z-index: 0; }
+.sc-lines line {
+  stroke: rgba(255, 255, 255, 0.07);
+  stroke-width: calc(0.6px + var(--w, 1) * 0.25px);
+  transition: stroke 0.25s, stroke-width 0.25s;
+}
+.sc-lines line.lit { stroke: rgba(255, 209, 102, 0.75); stroke-width: 1.4px; }
+.sc-chip { position: relative; z-index: 1; display: inline-flex; align-items: center; gap: 0.5rem; padding-left: 0.6rem; }
+.sc-chip::before {
+  content: ''; width: 6px; height: 6px; border-radius: 50%; flex: none;
+  background: rgba(255, 255, 255, 0.55);
+  box-shadow: 0 0 6px rgba(255, 255, 255, 0.5);
+  transition: background 0.2s, box-shadow 0.2s, transform 0.2s;
+}
+.sc-grid.has-focus .sc-chip { opacity: 0.45; transition: opacity 0.25s; }
+.sc-grid.has-focus .sc-chip.lit, .sc-grid.has-focus .sc-chip.near { opacity: 1; }
+.sc-chip.lit::before { background: #ffd166; box-shadow: 0 0 12px #ffd166; transform: scale(1.5); }
+.sc-chip.near::before { background: #ffe7b0; box-shadow: 0 0 8px rgba(255, 209, 102, 0.7); }
+.sc-chip.near { border-color: rgba(255, 209, 102, 0.35); color: var(--fg); }
+.work-card.skill-highlight {
+  border-color: var(--goldman);
+  box-shadow: 0 12px 30px var(--goldman-glow);
+  transition: border-color 0.3s, box-shadow 0.3s;
+}
+body[data-theme="day"] .sc-lines line { stroke: rgba(60, 40, 20, 0.1); }
+body[data-theme="day"] .sc-lines line.lit { stroke: rgba(214, 140, 40, 0.8); }
+body[data-theme="day"] .sc-chip::before { background: rgba(120, 80, 30, 0.5); box-shadow: none; }
+
+/* Flight recorder */
+.flight-recorder {
+  margin: 0 0 2rem;
+  padding: 1.25rem 1.5rem 1.4rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.02);
+}
+.fr-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1.1rem; flex-wrap: wrap; }
+.fr-eyebrow {
+  font-family: var(--font-display);
+  font-size: 0.78rem; letter-spacing: 0.18em; text-transform: uppercase;
+  color: var(--accent-soft);
+}
+.fr-play {
+  padding: 0.4rem 0.9rem; border-radius: 999px; font-size: 0.8rem;
+  border: 1px solid rgba(255, 209, 102, 0.4); color: #ffd166;
+  background: rgba(255, 209, 102, 0.06);
+  transition: background 0.2s, border-color 0.2s;
+}
+.fr-play:hover { background: rgba(255, 209, 102, 0.14); border-color: rgba(255, 209, 102, 0.8); }
+.fr-track {
+  position: relative;
+  display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 0.4rem;
+  margin: 0; padding: 0; list-style: none;
+}
+.fr-track::before {   /* the comet trail the stops sit on */
+  content: ''; position: absolute; left: 4%; right: 4%; top: 7px; height: 2px;
+  background: linear-gradient(90deg, rgba(196, 30, 58, 0.15), rgba(214, 178, 94, 0.7), rgba(53, 214, 255, 0.6));
+  border-radius: 2px;
+}
+.fr-stop {
+  position: relative; width: 100%;
+  display: flex; flex-direction: column; align-items: center; text-align: center;
+  padding: 1.35rem 0.25rem 0.4rem;
+  border-radius: 10px;
+  transition: background 0.2s;
+}
+.fr-stop::before {
+  content: ''; position: absolute; top: 2px; left: 50%; transform: translateX(-50%);
+  width: 12px; height: 12px; border-radius: 50%;
+  background: var(--bg-3); border: 2px solid var(--goldman);
+  box-shadow: 0 0 10px var(--goldman-glow);
+  transition: transform 0.25s, background 0.25s;
+}
+.fr-stop:hover, .fr-stop:focus-visible { background: rgba(255, 255, 255, 0.04); }
+.fr-stop:hover::before, .fr-stop.on::before { transform: translateX(-50%) scale(1.35); background: var(--goldman); }
+.fr-next::before { border-color: #35d6ff; box-shadow: 0 0 12px rgba(53, 214, 255, 0.6); border-style: dashed; }
+.fr-next.on::before, .fr-next:hover::before { background: #35d6ff; }
+.fr-date { font-size: 0.7rem; letter-spacing: 0.08em; color: var(--fg-faint); text-transform: uppercase; }
+.fr-name { font-family: var(--font-display); font-weight: 600; font-size: 0.88rem; color: var(--fg); margin-top: 0.15rem; }
+.fr-sub { font-size: 0.72rem; color: var(--fg-dim); line-height: 1.35; margin-top: 0.15rem; }
+.fr-hud { pointer-events: none; }
+.fr-hud-step { color: #ffd166; font-weight: 600; }
+.fr-hud-text { color: rgba(255, 255, 255, 0.85); }
+.fr-hud-hint { color: rgba(255, 255, 255, 0.4); }
+.fr-arrive { animation: fr-arrive 1.6s ease-out; }
+@keyframes fr-arrive {
+  0%   { box-shadow: 0 0 0 0 rgba(255, 209, 102, 0.55); }
+  100% { box-shadow: 0 0 0 18px rgba(255, 209, 102, 0); }
+}
+body[data-theme="day"] .flight-recorder { background: rgba(255, 255, 255, 0.5); }
+
+/* Ask Mahir starter prompts */
+.ask-starters { display: flex; flex-wrap: wrap; gap: 0.4rem; padding: 0 0.9rem 0.6rem; }
+.ask-starters[hidden] { display: none; }
+.ask-starters button {
+  padding: 0.3rem 0.65rem; border-radius: 999px;
+  font-size: 0.74rem; color: var(--fg-dim);
+  border: 1px solid var(--line-strong);
+  background: rgba(255, 255, 255, 0.03);
+  transition: color 0.2s, border-color 0.2s, background 0.2s;
+}
+.ask-starters button:hover { color: var(--fg); border-color: var(--accent); background: rgba(255, 255, 255, 0.07); }
+
+/* Guestbook: my asteroid while it waits for approval */
+.asteroid-entry.pending { border-style: dashed; opacity: 0.85; }
+.ae-pending { display: block; margin-top: 0.3rem; font-size: 0.72rem; color: #ffc878; }
+.asteroid-label.pending { opacity: 0.65; border-style: dashed; }
+
+/* Small screens */
+@media (max-width: 860px) {
+  .hero-actions { top: 4.5rem; left: 1rem; gap: 0.45rem; }
+  .briefing-btn { font-size: 0.66rem; padding: 0.35rem 0.75rem; }
+  .fr-track { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: 34%; overflow-x: auto; scroll-snap-type: x mandatory; padding-bottom: 0.4rem; }
+  .fr-stop { scroll-snap-align: start; }
+  .fr-track::before { left: 0; right: auto; width: calc(34% * 7 + 0.4rem * 6); }
+}
+@media (max-width: 720px) {
+  .hero-actions { top: 4rem; left: 0.6rem; }
+  .bf-facts { grid-template-columns: 1fr; }
+  .briefing-panel, .log-panel { padding: 1.5rem 1.25rem; }
+  .bf-title, .log-title { font-size: 1.4rem; }
+}
+@media print {
+  .hero-actions, .log-btn, .flight-recorder .fr-play, .ask-starters { display: none !important; }
+}
+.briefing-panel:focus, .log-panel:focus { outline: none; }
+
+/* Readability over the 3D scene: match the card glass, keep constellation
+   lines behind the star chips */
+.flight-recorder, .skills-constellation {
+  background: linear-gradient(180deg, rgba(17, 20, 29, 0.82), rgba(11, 13, 20, 0.66));
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+.sc-chip { background: #12151e; }
+.sc-chip:hover { background: #1a1e29; }
+body[data-theme="day"] .flight-recorder,
+body[data-theme="day"] .skills-constellation { background: rgba(255, 255, 255, 0.78); }
+body[data-theme="day"] .sc-chip { background: #fffaf3; }
+/* Keep the Ask bubble out of the way while a dialog is open */
+body:has(.cheatsheet:not([hidden])) .ask-bubble,
+body:has(.add-self-modal:not([hidden])) .ask-bubble,
+body:has(.yt-modal:not([hidden])) .ask-bubble { opacity: 0; pointer-events: none; }
+/* No 3D in focus mode → no floating planet / sun labels either */
+body[data-theme="focus"] .planet-labels { display: none; }
+
+/* Day theme contrast for Mission Control elements */
+body[data-theme="day"] .bf-eyebrow,
+body[data-theme="day"] .log-eyebrow,
+body[data-theme="day"] .log-links a,
+body[data-theme="day"] .log-btn,
+body[data-theme="day"] .briefing-inline { color: #0a6f92; }
+body[data-theme="day"] .log-btn,
+body[data-theme="day"] .briefing-inline { border-color: rgba(10, 111, 146, 0.4); background: rgba(10, 111, 146, 0.06); }
+body[data-theme="day"] .briefing-btn { color: #0b3b4f; background: rgba(255, 255, 255, 0.7); border-color: rgba(10, 111, 146, 0.45); }
+body[data-theme="day"] .bf-label,
+body[data-theme="day"] .log-label,
+body[data-theme="day"] .fr-eyebrow { color: #9a6410; }
+body[data-theme="day"] .fr-play { color: #8a5a0e; border-color: rgba(154, 100, 16, 0.45); background: rgba(255, 209, 102, 0.18); }
+body[data-theme="day"] .log-outcome { color: #136b40; background: rgba(74, 217, 145, 0.14); border-color: rgba(19, 107, 64, 0.3); }
+body[data-theme="day"] .log-mission { background: rgba(214, 178, 94, 0.14); }
+body[data-theme="day"] .bf-facts div { background: rgba(255, 255, 255, 0.6); }
+body[data-theme="day"] .fr-date { color: #8a7b8f; }

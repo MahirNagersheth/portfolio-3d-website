@@ -1,5 +1,11 @@
 // Mahir Nagersheth — 3D Solar Portfolio  (THREE loaded globally)
 
+// Privacy-friendly event counting (GoatCounter). No-op until
+// window.GOATCOUNTER_CODE is set in index.html.
+function track(name) {
+  try { window.goatcounter?.count?.({ path: 'event/' + name, title: name, event: true }); } catch (_) {}
+}
+
 // ---------- PLANETS + subsections (subsections become moons) ----------
 const PLANETS = [
   { id:'work', name:'Work', sub:'Goldman Sachs',
@@ -107,9 +113,11 @@ const rgbStr = ({r,g,b}, a=1) => `rgba(${r},${g},${b},${a})`;
 const BLACK = { r: 0, g: 0, b: 0 };
 
 // ---------- Procedural planet textures (color only, 512×256) ----------
-function generatePlanetTexture(opts) {
-  const W = 512, H = 256;
-  const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+// paintPlanetTexture only touches the canvas it's given, so the exact same
+// function runs in a Web Worker on an OffscreenCanvas (see TEXTURE_WORKER_SRC)
+// and keeps ~0.5s of per-pixel noise math off the main thread at startup.
+function paintPlanetTexture(cv, opts) {
+  const W = cv.width, H = cv.height;
   const ctx = cv.getContext('2d');
   const baseRgb = hexToRgb(opts.base), midRgb = hexToRgb(opts.mid), accRgb = hexToRgb(opts.accent);
   const noise = makeNoise(opts.seed || 1);
@@ -151,7 +159,7 @@ function generatePlanetTexture(opts) {
         g.addColorStop(1, rgbStr(accRgb, 0.18));
         ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
       }
-      const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace; return tex;
+      return;
     }
     case 'continents': {
       const landBase = mixRgb(midRgb, { r: 60, g: 110, b: 70 }, 0.45);
@@ -235,11 +243,73 @@ function generatePlanetTexture(opts) {
         g.addColorStop(1, rgbStr(accRgb, 0.30));
         ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
       }
-      const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace; return tex;
+      return;
     }
   }
   ctx.putImageData(img, 0, 0);
+}
+function canvasToTexture(cv) {
   const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace; return tex;
+}
+// Synchronous path (fallback when Workers / OffscreenCanvas aren't available)
+function generatePlanetTexture(opts) {
+  const cv = document.createElement('canvas'); cv.width = 512; cv.height = 256;
+  paintPlanetTexture(cv, opts);
+  return canvasToTexture(cv);
+}
+
+// Background texture painter — built from the same function sources above.
+const TEXTURE_WORKER_SRC = [makeNoise, fbm, paintPlanetTexture].map(f => f.toString()).join('\n') + `
+const hexToRgb = ${hexToRgb};
+const mixRgb = ${mixRgb};
+const rgbStr = ${rgbStr};
+const BLACK = { r: 0, g: 0, b: 0 };
+onmessage = (e) => {
+  const { id, opts } = e.data;
+  const cv = new OffscreenCanvas(512, 256);
+  paintPlanetTexture(cv, opts);
+  const bmp = cv.transferToImageBitmap();
+  postMessage({ id, bmp }, [bmp]);
+};`;
+let texWorker = null;
+const texJobs = new Map();
+let texJobSeq = 0;
+try {
+  if (window.Worker && window.OffscreenCanvas && new OffscreenCanvas(1, 1).getContext('2d')) {
+    texWorker = new Worker(URL.createObjectURL(new Blob([TEXTURE_WORKER_SRC], { type: 'text/javascript' })));
+    texWorker.onmessage = (e) => {
+      const job = texJobs.get(e.data.id); if (!job) return;
+      texJobs.delete(e.data.id);
+      const cv = document.createElement('canvas'); cv.width = 512; cv.height = 256;
+      cv.getContext('2d').drawImage(e.data.bmp, 0, 0);
+      e.data.bmp.close?.();
+      job.done(canvasToTexture(cv));
+    };
+    texWorker.onerror = () => {   // worker failed — paint anything outstanding on the main thread
+      texWorker = null;
+      texJobs.forEach(job => job.done(generatePlanetTexture(job.opts)));
+      texJobs.clear();
+    };
+  }
+} catch (_) { texWorker = null; }
+// Request a planet texture; `done(texture)` fires when it's ready.
+function requestPlanetTexture(opts, done) {
+  if (!texWorker) { done(generatePlanetTexture(opts)); return; }
+  const id = ++texJobSeq;
+  texJobs.set(id, { opts, done });
+  texWorker.postMessage({ id, opts });
+}
+// Planets start flat-coloured and pick up their surface map when painted.
+function applyPlanetTexture(mat, opts) {
+  requestPlanetTexture(opts, tex => {
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.ClampToEdgeWrapping;
+    tex.anisotropy = renderer.capabilities.getMaxAnisotropy?.() || 4;
+    mat.map = tex;
+    mat.color.set(0xffffff);
+    mat.needsUpdate = true;
+    queueMicrotask(requestRender);   // may fire during setup — defer past it
+  });
 }
 
 // Saturn-style ring strip (radial bands with gaps)
@@ -274,8 +344,37 @@ const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 500);
 camera.position.set(0, 0.5, 5);
 camera.lookAt(0, 0, 0);
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+// Device / preference profile
+const IS_SMALL = innerWidth < 720;
+const LOW_POWER = IS_SMALL
+  || (navigator.deviceMemory && navigator.deviceMemory <= 4)
+  || (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 4);
+// Lite mode: reduced-motion or data-saver visitors get a still solar
+// system — no orbits/drift, camera cuts instead of glides, and frames are
+// rendered only when something changes (scroll, resize, navigation).
+const LITE = !!(matchMedia('(prefers-reduced-motion: reduce)').matches || navigator.connection?.saveData);
+let NO_WEBGL = false;
+function createRenderer() {
+  try {
+    return new THREE.WebGLRenderer({ canvas, antialias: !LOW_POWER, alpha: true, powerPreference: 'high-performance' });
+  } catch (e) {
+    // No WebGL (old device, disabled GPU, locked-down browser): keep the
+    // whole site working in the no-3D "focus" layout instead of crashing.
+    console.warn('[3D] WebGL unavailable — using the no-3D layout.', e);
+    NO_WEBGL = true;
+    return { setPixelRatio() {}, setSize() {}, setClearColor() {}, render() {}, capabilities: { getMaxAnisotropy: () => 1 } };
+  }
+}
+const renderer = createRenderer();
+renderer.setPixelRatio(Math.min(devicePixelRatio, LOW_POWER ? 1.5 : 2));
+
+// On-demand rendering for lite mode (no-op otherwise: the loop runs anyway)
+let renderQueued = false;
+function requestRender() {
+  if (!LITE || gestureExplore || focusModeActive || renderQueued) return;
+  renderQueued = true;
+  requestAnimationFrame(() => { renderQueued = false; animate(); });
+}
 renderer.setSize(innerWidth, innerHeight);
 renderer.setClearColor(0x000000, 0);
 
@@ -300,7 +399,7 @@ function starfield(count, spread, size, opacity) {
     depthWrite: false, blending: THREE.AdditiveBlending,
   }));
 }
-const starsFar = starfield(2000, 200, 0.115, 0.85), starsNear = starfield(500, 60, 0.085, 0.55);
+const starsFar = starfield(LOW_POWER ? 1100 : 2000, 200, 0.115, 0.85), starsNear = starfield(LOW_POWER ? 280 : 500, 60, 0.085, 0.55);
 scene.add(starsFar); scene.add(starsNear);
 
 // Fairy-dust particles — only visible in day mode. Pastel motes drifting
@@ -370,17 +469,14 @@ PLANETS.forEach(p => {
   pivot.add(planetGroup);
   p.group = planetGroup;
 
-  const surfaceMap = generatePlanetTexture(p.texture);
-  surfaceMap.wrapS = THREE.RepeatWrapping;
-  surfaceMap.wrapT = THREE.ClampToEdgeWrapping;
-  surfaceMap.anisotropy = renderer.capabilities.getMaxAnisotropy?.() || 4;
-
   const planetMat = new THREE.MeshStandardMaterial({
-    map: surfaceMap, color: 0xffffff,
+    color: p.color,
     emissive: p.emissive, emissiveIntensity: 0.18,
     roughness: 0.55, metalness: 0.15,
   });
-  const planet = new THREE.Mesh(new THREE.SphereGeometry(p.size, 48, 48), planetMat);
+  applyPlanetTexture(planetMat, p.texture);
+  const seg = LOW_POWER ? 32 : 48;
+  const planet = new THREE.Mesh(new THREE.SphereGeometry(p.size, seg, seg), planetMat);
   planetGroup.add(planet);
   p.mesh = planet; p.material = planetMat;
 
@@ -515,6 +611,7 @@ function isInHeroZone() {
 
 function setHover(id) {
   hoveredPlanetId = id;
+  requestRender();
   PLANETS.forEach(p => {
     const isHover = p.id === id;
     p.material.emissiveIntensity = isHover ? 1.05 : 0.18;
@@ -532,6 +629,7 @@ function setMode(newMode, planetId) {
   const back = document.getElementById('back-button');
   if (back) back.classList.toggle('visible', newMode === 'planet');
   document.querySelectorAll('.nav-links a[data-link]').forEach(a => a.classList.toggle('active', a.dataset.link === planetId));
+  requestRender();
 }
 
 function refreshCameraTargets() {
@@ -591,6 +689,7 @@ function enterExplore() {
   gCam.theta = gCam.tTheta = Math.atan2(OVERVIEW_POS.x, OVERVIEW_POS.z);
   gCam.center.set(0, 0, 0); gCam.tCenter.set(0, 0, 0);
   gCam.focusId = null;
+  if (LITE && !focusModeActive) requestAnimationFrame(animate);  // run continuously while exploring
   exploreStarBase = {
     near: starsNear.material.opacity,
     far:  starsFar.material.opacity,
@@ -672,23 +771,26 @@ function screenPickPlanet(x, y, px = 100) {
 }
 function exploreHover(id) { hoveredPlanetId = id; }
 
-// Section observer — the section crossing the middle of the viewport is the
-// active planet. (A ratio threshold like 0.25 never fires for sections
-// taller than ~4 screens and fires late for tall ones, leaving the page
-// stuck in overview mode.)
+// Active section = the one spanning the middle of the viewport. Checked
+// directly on scroll (a ratio-threshold IntersectionObserver fires late or
+// never for tall sections, and rootMargin is ignored inside iframes).
 const sectionEls = document.querySelectorAll('main .section');
-let middleSectionId = null;
-const sectionObs = new IntersectionObserver(entries => {
-  entries.forEach(e => {
-    if (e.isIntersecting) middleSectionId = e.target.id;
-    else if (middleSectionId === e.target.id) middleSectionId = null;
-  });
-  const hit = entries.find(e => e.isIntersecting);
-  if (!hit) return;
-  const id = hit.target.id;
-  if (PLANET_BY_ID[id]) { setMode('planet', id); refreshCameraTargets(); }
-}, { rootMargin: '-45% 0px -45% 0px', threshold: 0 });
-sectionEls.forEach(el => sectionObs.observe(el));
+let middleSectionId = null, sectionCheckQueued = false;
+function detectMiddleSection() {
+  sectionCheckQueued = false;
+  const mid = innerHeight / 2;
+  let found = null;
+  for (const el of sectionEls) {
+    const r = el.getBoundingClientRect();
+    if (r.top <= mid && r.bottom > mid) { found = el.id; break; }
+  }
+  if (found === middleSectionId) return;
+  middleSectionId = found;
+  if (found && PLANET_BY_ID[found]) { setMode('planet', found); refreshCameraTargets(); }
+}
+addEventListener('scroll', () => {
+  if (!sectionCheckQueued) { sectionCheckQueued = true; requestAnimationFrame(detectMiddleSection); }
+}, { passive: true });
 
 // Subsection cards: each card → its planet's moon. As the user scrolls
 // through cards, p.activeSubsectionIdx updates → camera pans to a new
@@ -757,29 +859,56 @@ function onResize() {
   else              { HERO_CLOSE_POS.set(0, 0.5, 5.0); OVERVIEW_POS.set(0, 9, 50); }
   refreshCameraTargets();
 }
-addEventListener('resize', onResize);
+addEventListener('resize', () => { onResize(); requestRender(); });
+addEventListener('scroll', requestRender, { passive: true });
 onResize();
+
+// Hero chrome (availability chip, briefing button, scroll hint) fades once
+// you leave the hero. Driven by scroll too, so it also works when the render
+// loop is paused (focus theme, lite mode, no WebGL).
+function updateHeroChrome() {
+  const inHero = isInHeroZone();
+  document.querySelector('.hero-actions')?.classList.toggle('scrolled-past', !inHero);
+  document.querySelector('.solar-instructions')?.classList.toggle('scrolled-past', !inHero);
+  return inHero;
+}
+addEventListener('scroll', updateHeroChrome, { passive: true });
 
 // ---------- Render loop ----------
 let focusModeActive = false;
 const POS_LAMBDA = 1.7, LOOK_LAMBDA = 2.1, SCALE_LAMBDA = 6, ACT_LAMBDA = 3.5;
-const clock = new THREE.Clock(), tmpVec = new THREE.Vector3();
+const clock = new THREE.Clock(), tmpVec = new THREE.Vector3(), camToPlanet = new THREE.Vector3();
+const SUN_OCCLUDE_R = 1.75;
+
+// Is `pos` hidden behind the sun from the camera's point of view?
+function behindSun(pos) {
+  const c = camera.position;
+  camToPlanet.subVectors(pos, c);
+  const len2 = camToPlanet.lengthSq(); if (!len2) return false;
+  const tt = -c.dot(camToPlanet) / len2;          // closest approach of the sightline to the sun
+  if (tt <= 0 || tt >= 1) return false;            // sun isn't between camera and planet
+  const cx = c.x + camToPlanet.x * tt, cy = c.y + camToPlanet.y * tt, cz = c.z + camToPlanet.z * tt;
+  return cx * cx + cy * cy + cz * cz < SUN_OCCLUDE_R * SUN_OCCLUDE_R;
+}
 
 function animate() {
   const dt = Math.min(0.05, clock.getDelta());
   const t = clock.elapsedTime;
+  // Lite mode: freeze ambient motion and let every eased value land at once
+  const motion = LITE ? 0 : 1;
+  const ease = (lambda) => (LITE && !gestureExplore) ? 1 : 1 - Math.exp(-lambda * dt);
 
   // Sun
-  sunGroup.scale.setScalar(1 + Math.sin(t * 0.6) * 0.015);
-  sunHaloInner.material.opacity = 0.22 + Math.sin(t * 0.9) * 0.05;
-  corona.material.opacity = 0.85 + Math.sin(t * 0.7) * 0.10;
+  sunGroup.scale.setScalar(1 + Math.sin(t * 0.6) * 0.015 * motion);
+  sunHaloInner.material.opacity = 0.22 + Math.sin(t * 0.9) * 0.05 * motion;
+  corona.material.opacity = 0.85 + Math.sin(t * 0.7) * 0.10 * motion;
 
   // Stars drift
-  starsFar.rotation.y  += 0.00015;
-  starsNear.rotation.y -= 0.0003;
+  starsFar.rotation.y  += 0.00015 * motion;
+  starsNear.rotation.y -= 0.0003 * motion;
   // Fairy dust drifts at its own pace
-  dust.rotation.y += 0.00022;
-  dust.rotation.x += 0.00009;
+  dust.rotation.y += 0.00022 * motion;
+  dust.rotation.x += 0.00009 * motion;
 
   // Section title trigger (60% above readable space) — drives moon animation.
   // Also: being the active planet (zoomed in) keeps moons alive so they don't
@@ -792,7 +921,7 @@ function animate() {
       p.sectionActive = false;
     }
     const trigger = p.sectionActive || (mode === 'planet' && activePlanetId === p.id);
-    p.activityT += ((trigger ? 1 : 0) - p.activityT) * (1 - Math.exp(-ACT_LAMBDA * dt));
+    p.activityT += ((trigger ? 1 : 0) - p.activityT) * ease(ACT_LAMBDA);
   });
 
   // Smooth-lerp the active subsection index for the active planet —
@@ -801,7 +930,7 @@ function animate() {
     const p = PLANET_BY_ID[activePlanetId];
     if (p) {
       const target = p.activeSubsectionIdx || 0;
-      p.smoothIdx = (p.smoothIdx || 0) + (target - (p.smoothIdx || 0)) * (1 - Math.exp(-2.0 * dt));
+      p.smoothIdx = (p.smoothIdx || 0) + (target - (p.smoothIdx || 0)) * ease(2.0);
       refreshCameraTargets(); // re-evaluate every frame so the tour stays smooth
     }
   }
@@ -809,12 +938,12 @@ function animate() {
   // Orbits — paused when zoomed onto a planet so the camera doesn't chase
   const orbitFactor = mode === 'overview' ? 1 : 0;
   PLANETS.forEach(p => {
-    p.pivot.rotation.y += p.speed * orbitFactor;
-    p.mesh.rotation.y += 0.0035;
-    if (p.rings) p.rings.rotation.z += 0.0012;
+    p.pivot.rotation.y += p.speed * orbitFactor * motion;
+    p.mesh.rotation.y += 0.0035 * motion;
+    if (p.rings) p.rings.rotation.z += 0.0012 * motion;
     // Hover scale
     const tgt = (hoveredPlanetId === p.id || activePlanetId === p.id) ? 1.18 : 1.0;
-    const sf = 1 - Math.exp(-SCALE_LAMBDA * dt);
+    const sf = ease(SCALE_LAMBDA);
     const next = p.mesh.scale.x + (tgt - p.mesh.scale.x) * sf;
     p.mesh.scale.setScalar(next);
     p.halo.scale.setScalar(next);
@@ -825,8 +954,8 @@ function animate() {
       const isActivePlanet = mode === 'planet' && activePlanetId === p.id;
       const focusIdx = p.smoothIdx || 0;
       p.moons.forEach((m, i) => {
-        m.pivot.rotation.y += m.speed * p.activityT;
-        m.mesh.rotation.y += 0.01 * p.activityT;
+        m.pivot.rotation.y += m.speed * p.activityT * motion;
+        m.mesh.rotation.y += 0.01 * p.activityT * motion;
         m.line.material.opacity = 0.04 + 0.18 * p.activityT;
         // Highlight the moon corresponding to the active subsection
         const focus = isActivePlanet ? Math.max(0, 1 - Math.abs(focusIdx - i)) : 0;
@@ -859,24 +988,23 @@ function animate() {
   // Camera damping — frame-rate independent (snappier while exploring)
   const posL = gestureExplore ? 5.0 : POS_LAMBDA;
   const lookL = gestureExplore ? 5.0 : LOOK_LAMBDA;
-  camera.position.lerp(camPosTarget, 1 - Math.exp(-posL * dt));
-  currentLookAt.lerp(camLookTarget, 1 - Math.exp(-lookL * dt));
+  camera.position.lerp(camPosTarget, ease(posL));
+  currentLookAt.lerp(camLookTarget, ease(lookL));
   camera.lookAt(currentLookAt);
 
   // Hero chrome fade
-  const inHero = isInHeroZone();
-  document.querySelector('.solar-chip')?.classList.toggle('scrolled-past', !inHero);
-  document.querySelector('.solar-instructions')?.classList.toggle('scrolled-past', !inHero);
+  const inHero = updateHeroChrome();
 
   // Project labels in overview/hero only
   if (mode === 'overview' && inHero) {
     PLANETS.forEach(p => {
       p.group.getWorldPosition(tmpVec);
+      const occluded = behindSun(tmpVec);
       tmpVec.project(camera);
       const onScreen = tmpVec.z < 1 && tmpVec.z > -1;
       p.label.style.left = `${(tmpVec.x * 0.5 + 0.5) * innerWidth}px`;
       p.label.style.top = `${(-tmpVec.y * 0.5 + 0.5) * innerHeight - 38}px`;
-      p.label.style.visibility = onScreen ? 'visible' : 'hidden';
+      p.label.style.visibility = (onScreen && !occluded) ? 'visible' : 'hidden';
     });
     tmpVec.set(0, 0, 0).project(camera);
     const sx = (tmpVec.x * 0.5 + 0.5) * innerWidth, sy = (-tmpVec.y * 0.5 + 0.5) * innerHeight;
@@ -895,7 +1023,8 @@ function animate() {
   }
 
   renderer.render(scene, camera);
-  if (!focusModeActive) requestAnimationFrame(animate);
+  if (focusModeActive) return;
+  if (!LITE || gestureExplore) requestAnimationFrame(animate);
 }
 animate();
 
@@ -968,6 +1097,7 @@ function updateSceneForTheme(theme) {
   scene.children.forEach(c => {
     if (c.isAmbientLight) { c.color.copy(day ? DAY_AMBIENT_COLOR : NIGHT_AMBIENT_COLOR); c.intensity = day ? 0.32 : 0.18; }
   });
+  requestRender();
 }
 
 function applyTheme(theme) {
@@ -977,7 +1107,7 @@ function applyTheme(theme) {
   if (theme === 'day' || theme === 'focus') document.body.setAttribute('data-theme', theme);
   else document.body.removeAttribute('data-theme');
 
-  try { localStorage.setItem(THEME_KEY, theme); } catch (_) {}
+  if (!NO_WEBGL) { try { localStorage.setItem(THEME_KEY, theme); } catch (_) {} }
   updateSceneForTheme(theme);
 
   // Restart render loop when leaving focus mode
@@ -987,6 +1117,7 @@ function applyTheme(theme) {
 // First-visit theme: honour the user's OS preference (prefers-color-scheme)
 // if they haven't picked one yet. Saved choice always wins.
 const initialTheme = (() => {
+  if (NO_WEBGL) return 'focus';   // nothing to render — use the no-3D layout
   try { const saved = localStorage.getItem(THEME_KEY); if (saved) return saved; } catch (_) {}
   return matchMedia?.('(prefers-color-scheme: light)').matches ? 'day' : 'night';
 })();
@@ -1003,7 +1134,7 @@ const KEY_TO_PLANET = ['work','education','projects','piano','entrepreneurship',
 // Any modal / panel open? Then Escape should only close it — not also fly
 // back to the overview and scroll to the top. (This handler is registered
 // before the modal handlers, so their stopImmediatePropagation is too late.)
-const OVERLAY_IDS = ['cheatsheet','changelog-modal','yt-modal','search-palette','add-self-modal','ask-panel','gesture-overlay'];
+const OVERLAY_IDS = ['cheatsheet','changelog-modal','yt-modal','search-palette','add-self-modal','ask-panel','gesture-overlay','briefing-modal','log-modal'];
 function anyOverlayOpen() {
   return OVERLAY_IDS.some(id => { const el = document.getElementById(id); return el && !el.hasAttribute('hidden'); });
 }
@@ -1019,6 +1150,7 @@ addEventListener('keydown', e => {
     focusOverview(true); return;
   }
   if (e.key === 't' || e.key === 'T') { document.getElementById('theme-toggle')?.click(); return; }
+  if (anyOverlayOpen()) return;   // don't fly around behind an open dialog
   const idx = parseInt(e.key, 10);
   if (idx >= 1 && idx <= KEY_TO_PLANET.length) {
     e.preventDefault();
@@ -1046,7 +1178,25 @@ focusPlanet = function(planetId, scrollToSection) {
 //  Flight paths — draw a faint arc between camera origin and
 //  the target planet, fading out over ~1.4 seconds.
 // ============================================================
+// Soft round glow used for comet heads (flight paths, guestbook comets)
+const glowTexture = (() => {
+  const cv = document.createElement('canvas'); cv.width = cv.height = 64;
+  const c = cv.getContext('2d'), g = c.createRadialGradient(32, 32, 0, 32, 32, 32);
+  g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.25, 'rgba(255,240,200,0.8)');
+  g.addColorStop(0.6, 'rgba(255,190,110,0.18)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+  c.fillStyle = g; c.fillRect(0, 0, 64, 64);
+  return new THREE.CanvasTexture(cv);
+})();
+function makeCometHead(color = 0xffffff, size = 0.9) {
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: glowTexture, color, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,
+  }));
+  sp.scale.set(size, size, 1);
+  return sp;
+}
+
 function drawFlightPath(fromPos, toPos) {
+  if (LITE) return;   // no decorative motion in lite mode
   const dist = fromPos.distanceTo(toPos);
   if (dist < 0.5) return;
   const mid = fromPos.clone().add(toPos).multiplyScalar(0.5);
@@ -1064,51 +1214,27 @@ function drawFlightPath(fromPos, toPos) {
   });
   const line = new THREE.Line(geom, mat);
   scene.add(line);
+  // A comet head races along the arc ahead of the fading trail
+  const head = makeCometHead(0xfff1c1, Math.max(0.5, dist * 0.03));
+  head.position.copy(fromPos);
+  scene.add(head);
   const start = performance.now(), dur = 1400;
   function step() {
     const t = (performance.now() - start) / dur;
     if (t >= 1) {
-      scene.remove(line); geom.dispose(); mat.dispose();
+      scene.remove(line); scene.remove(head);
+      geom.dispose(); mat.dispose(); head.material.dispose();
       return;
     }
     mat.opacity = 0.85 * (1 - t);
+    const ht = Math.min(1, t / 0.7);
+    head.position.copy(curve.getPoint(easeInOutCubic(ht)));
+    head.material.opacity = t < 0.7 ? 1 : 1 - (t - 0.7) / 0.3;
     requestAnimationFrame(step);
   }
   step();
 }
 
-// ============================================================
-//  Live-from-GitHub feed (Projects section)
-//  Set GITHUB_USERNAME to your real handle; leave empty to hide.
-// ============================================================
-const GITHUB_USERNAME = 'MahirNagersheth';
-async function loadGitHubFeed() {
-  const body = document.getElementById('gh-body');
-  const handle = document.getElementById('gh-handle');
-  if (!body) return;
-  if (!GITHUB_USERNAME) return;
-  if (handle) handle.textContent = '@' + GITHUB_USERNAME;
-  try {
-    const r = await fetch(`https://api.github.com/users/${GITHUB_USERNAME}/repos?sort=updated&per_page=6`);
-    if (!r.ok) throw new Error(r.statusText);
-    const repos = await r.json();
-    if (!Array.isArray(repos) || !repos.length) return;
-    const escape = s => s ? String(s).replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c])) : '';
-    body.innerHTML = `<div class="gh-grid">${repos.map(repo => `
-      <a class="gh-repo" href="${repo.html_url}" target="_blank" rel="noopener">
-        <h4 class="gh-name">${escape(repo.name)}</h4>
-        <p class="gh-desc">${escape(repo.description || 'No description provided.')}</p>
-        <div class="gh-meta">
-          <span class="lang">${escape(repo.language || 'Repo')}</span>
-          <span>★ ${repo.stargazers_count || 0}</span>
-          <span>${new Date(repo.updated_at).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}</span>
-        </div>
-      </a>`).join('')}</div>`;
-  } catch (e) {
-    body.innerHTML = `<p class="gh-empty">Couldn't reach GitHub right now.</p>`;
-  }
-}
-loadGitHubFeed();
 
 // Letter-by-letter section title reveal on first scroll-in
 function wrapSectionTitleLetters() {
@@ -1450,24 +1576,7 @@ audioBtn?.addEventListener('click', () => {
   masterEnv.gain.linearRampToValueAtTime(on ? 0 : 0.9, now + 1.6);
 });
 
-// Skills constellation — hover-to-highlight related projects
-{
-  const projectCards = document.querySelectorAll('.project-card');
-  function applyHighlight(tag) {
-    projectCards.forEach(card => {
-      const tags = (card.dataset.tags || '').split(/\s+/);
-      const match = tag && tags.includes(tag);
-      card.classList.toggle('skill-highlight', !!match);
-      card.classList.toggle('skill-dim', !!tag && !match && !card.classList.contains('phase2'));
-    });
-  }
-  document.querySelectorAll('.sc-chip').forEach(chip => {
-    chip.addEventListener('mouseenter', () => applyHighlight(chip.dataset.tag));
-    chip.addEventListener('mouseleave', () => applyHighlight(null));
-    chip.addEventListener('focus',  () => applyHighlight(chip.dataset.tag));
-    chip.addEventListener('blur',   () => applyHighlight(null));
-  });
-}
+// Skills constellation → see features.js
 
 // Sun easter egg — click the sun-label 7 times for a meteor shower
 {
@@ -1490,6 +1599,7 @@ audioBtn?.addEventListener('click', () => {
 }
 
 function spawnMeteorShower() {
+  if (LITE) return;
   const SHOWER = 18;
   for (let i = 0; i < SHOWER; i++) {
     setTimeout(() => spawnMeteor(), i * 70);
@@ -1553,34 +1663,6 @@ function spawnMeteor() {
   step();
 }
 
-// Profile avatar — swap initials for ./avatar.jpg (or .png) when present
-(function loadAvatarIfExists() {
-  const slot = document.querySelector('.profile-avatar');
-  if (!slot) return;
-  // Try many common filenames so you can drop your photo in as whatever
-  // name feels natural — case-insensitive thanks to most filesystems.
-  const exts = ['png', 'jpg', 'jpeg', 'webp', 'PNG', 'JPG', 'JPEG'];
-  const names = ['avatar', 'profile', 'me', 'mahir', 'headshot', 'photo'];
-  const candidates = [];
-  for (const n of names) for (const e of exts) candidates.push(`${n}.${e}`);
-  let i = 0;
-  function tryNext() {
-    if (i >= candidates.length) return;       // none found — keep initials
-    const test = new Image();
-    test.onload = () => {
-      const img = document.createElement('img');
-      img.src = candidates[i];
-      img.alt = 'Mahir Nagersheth';
-      img.className = 'profile-photo';
-      slot.querySelector('.profile-initials')?.remove();
-      slot.appendChild(img);
-    };
-    test.onerror = () => { i++; tryNext(); };
-    test.src = candidates[i];
-  }
-  tryNext();
-})();
-
 // Service worker registration (offline + installable)
 if ('serviceWorker' in navigator) {
   addEventListener('load', () => {
@@ -1640,9 +1722,7 @@ addEventListener('keydown', e => {
   if (e.code !== 'Space') return;
   const tag = (e.target?.tagName || '').toLowerCase();
   if (tag === 'input' || tag === 'textarea') return;
-  if (!document.getElementById('cheatsheet')?.hasAttribute('hidden')) return;
-  if (!document.getElementById('search-palette')?.hasAttribute('hidden')) return;
-  if (!document.getElementById('ask-panel')?.hasAttribute('hidden')) return;
+  if (anyOverlayOpen()) return;
   e.preventDefault();
   if (!tourActive) tourStart();
 });
@@ -1725,15 +1805,21 @@ Facts:
 - Pianist who performs and posts on YouTube
 - Languages: English, Hindi, Gujarati
 - Skills: Python, SQL, PostgreSQL, T-SQL, R, Java, JavaScript; Snowflake, Azure Data Factory, Azure Synapse, Databricks, Spark, Kafka, Hadoop, ClickHouse, MongoDB, SSIS; Power BI, Tableau, time series forecasting (ARIMA, SARIMA, ETS, VAR); PyTorch, TensorFlow, LLMs, LangGraph, AI agents, Transformers, NLP, scikit-learn, XGBoost, Streamlit
-- Contact: mnagersh@andrew.cmu.edu | linkedin.com/in/mahir-nagersheth | github.com/MahirNagersheth`;
+- Contact: mnagersh@andrew.cmu.edu | linkedin.com/in/mahir-nagersheth | github.com/MahirNagersheth
+
+Guidance: Refer to Mahir in the third person. For work authorization, say exactly: he is eligible to work in the U.S. for up to 3 years on STEM OPT and his EAD application is in process — do not call it an extension or say he already holds an EAD. For start dates, say he graduates in December 2026 and is open to full-time roles after that; for specifics, suggest emailing him. Never invent employers, numbers, or details that aren't listed above. Goldman Sachs internal systems are confidential — only describe what's listed.`;
 
 const askBubble   = document.getElementById('ask-bubble');
 const askPanel    = document.getElementById('ask-panel');
 const askMessages = document.getElementById('ask-messages');
 const askInput    = document.getElementById('ask-input');
 const askSend     = document.getElementById('ask-send');
+const askStarters = document.getElementById('ask-starters');
+const ASK_HISTORY_TURNS = 3;          // remember the last 3 Q&A pairs
+const askHistory = [];                // [{ role, content }]
+let askBusy = false;
 
-askBubble?.addEventListener('click', () => { askPanel?.removeAttribute('hidden'); askInput?.focus(); });
+askBubble?.addEventListener('click', () => { askPanel?.removeAttribute('hidden'); askInput?.focus(); track('ask-open'); });
 document.getElementById('ask-close')?.addEventListener('click', () => askPanel?.setAttribute('hidden', ''));
 
 function appendAskMsg(text, role) {
@@ -1742,50 +1828,98 @@ function appendAskMsg(text, role) {
   if (askMessages) askMessages.scrollTop = askMessages.scrollHeight;
   return d;
 }
-async function sendAskMessage() {
-  const q = askInput?.value.trim(); if (!q) return;
-  if (askInput) askInput.value = '';
-  appendAskMsg(q, 'user');
-  const typing = Object.assign(document.createElement('div'), { className: 'ask-msg assistant typing' });
-  askMessages?.appendChild(typing);
-  if (askMessages) askMessages.scrollTop = askMessages.scrollHeight;
 
-  const workerUrl = window.ASK_WORKER_URL;
-  if (!workerUrl) {
-    typing.remove();
+// Read an OpenAI-style SSE stream, calling onDelta(text) per token chunk.
+async function readChatStream(res, onDelta) {
+  const reader = res.body.getReader();
+  const dec = new TextDecoder();
+  let buf = '', full = '';
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let nl;
+    while ((nl = buf.indexOf('\n')) >= 0) {
+      const line = buf.slice(0, nl).trim(); buf = buf.slice(nl + 1);
+      if (!line.startsWith('data:')) continue;
+      const payload = line.slice(5).trim();
+      if (payload === '[DONE]') return full;
+      try {
+        const delta = JSON.parse(payload).choices?.[0]?.delta?.content || '';
+        if (delta) { full += delta; onDelta(full); }
+      } catch (_) { /* partial line — ignore */ }
+    }
+  }
+  return full;
+}
+
+async function askModel(messages, stream) {
+  return fetch(window.ASK_WORKER_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      // Groq retired llama-3.1-8b-instant for this key (model_not_found).
+      // gpt-oss-20b is a reasoning model: keep reasoning short and hidden.
+      model: 'openai/gpt-oss-20b',
+      reasoning_effort: 'low', include_reasoning: false,
+      messages, max_tokens: 400, temperature: 0.6, stream,
+    }),
+  });
+}
+
+async function sendAskMessage(preset) {
+  if (askBusy) return;
+  const q = (preset || askInput?.value || '').trim(); if (!q) return;
+  if (askInput) askInput.value = '';
+  askStarters?.setAttribute('hidden', '');
+  appendAskMsg(q, 'user');
+  track('ask-question');
+
+  if (!window.ASK_WORKER_URL) {
     appendAskMsg("AI responses aren't configured yet — reach Mahir directly at mnagersh@andrew.cmu.edu!", 'assistant');
     return;
   }
+  askBusy = true;
+  const bubble = Object.assign(document.createElement('div'), { className: 'ask-msg assistant typing' });
+  askMessages?.appendChild(bubble);
+  if (askMessages) askMessages.scrollTop = askMessages.scrollHeight;
+
+  const messages = [
+    { role: 'system', content: PORTFOLIO_SYSTEM },
+    ...askHistory.slice(-ASK_HISTORY_TURNS * 2),
+    { role: 'user', content: q },
+  ];
+  const show = (text) => {
+    bubble.classList.remove('typing');
+    bubble.textContent = text;
+    if (askMessages) askMessages.scrollTop = askMessages.scrollHeight;
+  };
   try {
-    const res = await fetch(workerUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'llama-3.1-8b-instant',
-        messages: [
-          { role: 'system', content: PORTFOLIO_SYSTEM },
-          { role: 'user', content: q },
-        ],
-        max_tokens: 280,
-        temperature: 0.7,
-      }),
-    });
-    const data = await res.json();
-    typing.remove();
-    if (!res.ok) {
-      console.error('[Ask Mahir] API error:', data);
-      appendAskMsg("Couldn't reach the AI right now — try emailing Mahir at mnagersh@andrew.cmu.edu", 'assistant');
-      return;
+    let answer = '';
+    let res = await askModel(messages, true);
+    const streamed = res.ok && (res.headers.get('content-type') || '').includes('text/event-stream') && res.body;
+    if (streamed) {
+      answer = await readChatStream(res, show);
+    } else {
+      // Older proxy (no streaming) or a JSON reply — ask again without streaming
+      if (!res.ok) res = await askModel(messages, false);
+      const data = await res.json();
+      if (!res.ok) throw new Error(JSON.stringify(data));
+      answer = data.choices?.[0]?.message?.content || '';
     }
-    appendAskMsg(data.choices?.[0]?.message?.content || "Couldn't reach the AI right now.", 'assistant');
+    if (!answer) throw new Error('empty answer');
+    show(answer);
+    askHistory.push({ role: 'user', content: q }, { role: 'assistant', content: answer.slice(0, 1500) });
   } catch (err) {
-    console.error('[Ask Mahir] fetch error:', err);
-    typing.remove();
-    appendAskMsg("Network error — try emailing Mahir at mnagersh@andrew.cmu.edu", 'assistant');
+    console.error('[Ask Mahir]', err);
+    show("Couldn't reach the AI right now — try emailing Mahir at mnagersh@andrew.cmu.edu");
+  } finally {
+    askBusy = false;
   }
 }
-askSend?.addEventListener('click', sendAskMessage);
+askSend?.addEventListener('click', () => sendAskMessage());
 askInput?.addEventListener('keydown', e => { if (e.key === 'Enter') sendAskMessage(); });
+askStarters?.querySelectorAll('button').forEach(b => b.addEventListener('click', () => sendAskMessage(b.textContent)));
 
 // ── F7: Live Credit Risk Playground ─────────────────────────────
 function updateCreditRisk() {
@@ -1889,7 +2023,15 @@ PLANETS.forEach(p => {
     cards[cur].classList.add('reco-active');
     dotsEl?.querySelectorAll('.reco-dot')[cur]?.classList.add('active');
   }
-  setInterval(() => goTo(cur + 1), 5500);
+  // Auto-advance, but hold still while hovered/focused, when the tab is in
+  // the background, or for visitors who prefer reduced motion (WCAG 2.2.2).
+  let paused = false;
+  const sec = track.closest('.reco-section') || track;
+  sec.addEventListener('mouseenter', () => { paused = true; });
+  sec.addEventListener('mouseleave', () => { paused = false; });
+  sec.addEventListener('focusin',  () => { paused = true; });
+  sec.addEventListener('focusout', () => { paused = false; });
+  if (!LITE) setInterval(() => { if (!paused && !document.hidden) goTo(cur + 1); }, 5500);
 })();
 
 // ── F11: Cmd+K search palette ────────────────────────────────────
@@ -2005,10 +2147,19 @@ function makeAsteroidGeo(radius, seed) {
   const rng = () => { s = (s * 9301 + 49297) % 233280; return s / 233280; };
   const geo = new THREE.IcosahedronGeometry(radius, 2);
   const pos = geo.attributes.position;
+  // Lumpy but solid: displacement is a smooth function of the vertex's
+  // direction, so vertices shared between faces move together (scaling each
+  // vertex independently tore the faces apart into shards).
+  const ax = 0.75 + rng() * 0.5, ay = 0.6 + rng() * 0.4, az = 0.75 + rng() * 0.5;   // overall potato shape
+  const p1 = rng() * 6.28, p2 = rng() * 6.28, p3 = rng() * 6.28;
+  const v = new THREE.Vector3();
   for (let i = 0; i < pos.count; i++) {
-    // Per-axis independent scale so the rock looks irregular
-    const sx = 0.52 + rng() * 0.96, sy = 0.52 + rng() * 0.96, sz = 0.52 + rng() * 0.96;
-    pos.setXYZ(i, pos.getX(i) * sx, pos.getY(i) * sy, pos.getZ(i) * sz);
+    v.fromBufferAttribute(pos, i).normalize();
+    const bump = 1
+      + 0.16 * Math.sin(v.x * 3.1 + p1) * Math.sin(v.y * 2.7 + p2)
+      + 0.10 * Math.sin(v.z * 5.3 + p3) * Math.cos(v.x * 4.1 + p2)
+      + 0.06 * Math.sin((v.x + v.y + v.z) * 7.0 + p1);
+    pos.setXYZ(i, v.x * radius * bump * ax, v.y * radius * bump * ay, v.z * radius * bump * az);
   }
   pos.needsUpdate = true;
   geo.computeVertexNormals();
@@ -2067,17 +2218,13 @@ if (typeof OG_META !== 'undefined') {
   pivot.add(pg);
   p.group = pg;
 
-  const surfMap = generatePlanetTexture(p.texture);
-  surfMap.wrapS = THREE.RepeatWrapping;
-  surfMap.wrapT = THREE.ClampToEdgeWrapping;
-  surfMap.anisotropy = renderer.capabilities.getMaxAnisotropy?.() || 4;
-
   const mat = new THREE.MeshStandardMaterial({
-    map: surfMap, color: 0xffffff,
+    color: p.color,
     emissive: p.emissive, emissiveIntensity: 0.18,
     roughness: 0.58, metalness: 0.12,
   });
-  const mesh = new THREE.Mesh(new THREE.SphereGeometry(p.size, 48, 48), mat);
+  applyPlanetTexture(mat, p.texture);
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(p.size, LOW_POWER ? 32 : 48, LOW_POWER ? 32 : 48), mat);
   pg.add(mesh);
   p.mesh = mesh; p.material = mat;
 
@@ -2117,7 +2264,6 @@ if (typeof OG_META !== 'undefined') {
 
   // Register with section + reveal observers
   const secEl = document.getElementById('friends');
-  if (secEl) { sectionObs.observe(secEl); }
   secEl?.querySelectorAll('.reveal').forEach(el => revealObs.observe(el));
 })();
 
@@ -2126,7 +2272,7 @@ if (typeof OG_META !== 'undefined') {
 const FRIEND_COLORS = [0xffb347, 0xffd166, 0xff8c69, 0xffa07a, 0xffcc80, 0xf4c842, 0xffe0a0];
 let friendAsteroidCount = 0;
 
-function addNamedAsteroid(data) {
+function addNamedAsteroid(data, pending = false) {
   const p = FP;
   const idx  = friendAsteroidCount++;
   const seed = ((data.timestamp || Date.now()) % 9999) + idx * 17;
@@ -2164,7 +2310,7 @@ function addNamedAsteroid(data) {
 
   // HTML overlay label
   const lbl = document.createElement('div');
-  lbl.className = 'asteroid-label';
+  lbl.className = 'asteroid-label' + (pending ? ' pending' : '');
   lbl.innerHTML = `<span class="al-emoji">${safeEmoji(data.emoji)}</span><span class="al-name">${escFriendHtml(data.name)}</span>`;
   lbl.style.visibility = 'hidden';
   labelsRoot.appendChild(lbl);
@@ -2242,53 +2388,139 @@ const _friendsTmpVec = new THREE.Vector3();
   requestAnimationFrame(projectAsteroidLabels);
 })();
 
-// ── Friends data layer: Firebase (live) or localStorage (local) ──
-const FRIENDS_DB_PATH = 'portfolio-friends-v1/asteroids';
+// ── Friends data layer: Firebase (live, moderated) or localStorage ──
+// New entries go to `pending/` (write-only for visitors). Mahir approves
+// them on moderate.html, which moves them to `asteroids/` (public, read-only).
+// Visitors see their own pending asteroid on their device until approved.
+const FRIENDS_ROOT    = 'portfolio-friends-v1';
 const FRIENDS_LS_KEY  = 'mn-friends-asteroids-v1';
 const ADDED_SELF_KEY  = 'mn-friends-added-self';
+const MINE_KEY        = 'mn-friends-mine-v1';     // my pending submissions [{ key, data }]
+const MINE_TTL_MS     = 30 * 24 * 3600 * 1000;    // forget unapproved ones after 30 days
 
-let friendsDbRef = null;  // Firebase ref if connected
+let friendsRoot = null;      // Firebase ref to FRIENDS_ROOT when connected
+let friendsLive = false;     // true once the initial approved set has loaded
+const friendCards = new Map();
 
-function updateFriendsUI(data) {
-  // Add to 3D scene
-  addNamedAsteroid(data);
+function loadMine() {
+  try {
+    const list = JSON.parse(localStorage.getItem(MINE_KEY) || '[]');
+    return Array.isArray(list) ? list.filter(m => m && m.key && Date.now() - (m.data?.timestamp || 0) < MINE_TTL_MS) : [];
+  } catch (_) { return []; }
+}
+function saveMine(list) { try { localStorage.setItem(MINE_KEY, JSON.stringify(list)); } catch (_) {} }
 
-  // Add card to DOM grid
+function updateFriendCount() {
+  const numEl = document.getElementById('friends-count');
+  const grid = document.getElementById('friends-grid');
+  if (numEl && grid) numEl.textContent = grid.querySelectorAll('.asteroid-entry:not(.pending)').length;
+}
+
+// A comet streaks in from deep space and becomes the new asteroid
+function launchComet(onArrive) {
+  if (LITE || NO_WEBGL || !FP.group) { onArrive(); return; }
+  const target = new THREE.Vector3();
+  FP.group.getWorldPosition(target);
+  const dir = new THREE.Vector3(Math.random() - 0.5, 0.35 + Math.random() * 0.4, Math.random() - 0.5).normalize();
+  const from = target.clone().add(dir.multiplyScalar(14));
+  const head = makeCometHead(0xffc878, 0.8);
+  head.position.copy(from);
+  const tail = from.clone();
+  const geom = new THREE.BufferGeometry().setFromPoints([tail, from]);
+  const mat = new THREE.LineBasicMaterial({ color: 0xffd9a0, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false });
+  const line = new THREE.Line(geom, mat);
+  scene.add(head); scene.add(line);
+  const start = performance.now(), dur = 1800;
+  (function step() {
+    const t = Math.min(1, (performance.now() - start) / dur);
+    FP.group.getWorldPosition(target);            // the planet keeps orbiting
+    head.position.lerpVectors(from, target, Math.pow(t, 1.7));
+    tail.lerp(head.position, 0.08);
+    geom.setFromPoints([tail, head.position]);
+    if (t >= 1) {
+      scene.remove(head); scene.remove(line);
+      head.material.dispose(); geom.dispose(); mat.dispose();
+      onArrive();
+      return;
+    }
+    requestAnimationFrame(step);
+  })();
+}
+
+// "3 days ago" / "2 months ago" instead of "131,547 minutes ago"
+function timeAgo(ts) {
+  const rtf = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
+  let diff = (ts - Date.now()) / 1000;
+  const units = [['second', 60], ['minute', 60], ['hour', 24], ['day', 7], ['week', 4.345], ['month', 12], ['year', Infinity]];
+  for (const [unit, size] of units) {
+    if (Math.abs(diff) < size) return rtf.format(Math.round(diff), unit);
+    diff /= size;
+  }
+  return '';
+}
+
+function updateFriendsUI(data, { key = null, pending = false, comet = false } = {}) {
+  // Already on screen (e.g. my pending asteroid just got approved) → promote it
+  if (key && friendCards.has(key)) {
+    const card = friendCards.get(key);
+    if (!pending && card.classList.contains('pending')) {
+      card.classList.remove('pending');
+      card.querySelector('.ae-pending')?.remove();
+      FP.moons.forEach(m => { if (m.key === key) m.labelEl?.classList.remove('pending'); });
+      updateFriendCount();
+    }
+    return;
+  }
+
+  const addToScene = () => {
+    addNamedAsteroid(data, pending);
+    if (key) FP.moons[FP.moons.length - 1].key = key;
+    requestRender();
+  };
+  if (comet) launchComet(addToScene); else addToScene();
+
   const grid = document.getElementById('friends-grid');
   if (grid) {
     const card = document.createElement('div');
-    card.className = 'asteroid-entry';
-    const relTime = data.timestamp
-      ? new Intl.RelativeTimeFormat('en', { numeric: 'auto' }).format(
-          -Math.round((Date.now() - data.timestamp) / 60000), 'minutes')
-      : '';
+    card.className = 'asteroid-entry' + (pending ? ' pending' : '');
+    const relTime = data.timestamp ? timeAgo(data.timestamp) : '';
     card.innerHTML = `
       <span class="ae-emoji">${safeEmoji(data.emoji)}</span>
       <strong class="ae-name">${escFriendHtml(data.name)}</strong>
       ${data.message ? `<p class="ae-message">${escFriendHtml(data.message)}</p>` : ''}
+      ${pending ? '<span class="ae-pending">☄️ In flight — appears for everyone once approved</span>' : ''}
       <span class="ae-time">${relTime}</span>`;
     grid.prepend(card);
     revealObs.observe(card);
+    if (key) friendCards.set(key, card);
   }
-
-  // Update counter
-  const numEl = document.getElementById('friends-count');
-  if (numEl) numEl.textContent = friendAsteroidCount;
+  updateFriendCount();
 }
 
 function initFirebaseFriends() {
   try {
     if (!firebase.apps.length) firebase.initializeApp(window.FIREBASE_CONFIG);
-    const db  = firebase.database();
-    friendsDbRef = db.ref(FRIENDS_DB_PATH);
+    friendsRoot = firebase.database().ref(FRIENDS_ROOT);
+    const approved = friendsRoot.child('asteroids');
     const statusEl = document.getElementById('friends-db-status');
     if (statusEl) { statusEl.classList.add('live'); statusEl.querySelector('.fsb-status-text').textContent = 'Live'; }
 
-    // Listen for new entries (child_added fires for existing + future)
-    friendsDbRef.on('child_added', snap => {
+    // child_added fires for every existing entry first, then for new ones
+    approved.on('child_added', snap => {
       const d = sanitizeFriend(snap.val()); if (!d) return;
-      updateFriendsUI(d);
-    });
+      const mine = loadMine();
+      if (mine.some(m => m.key === snap.key)) saveMine(mine.filter(m => m.key !== snap.key));
+      updateFriendsUI(d, { key: snap.key, comet: friendsLive });
+    }, err => console.warn('[Friends] read failed:', err));
+
+    approved.once('value').then(() => {
+      friendsLive = true;
+      // My own submissions that are still waiting for approval (this device only)
+      loadMine().forEach(m => {
+        const d = sanitizeFriend(m.data);
+        if (d && !friendCards.has(m.key)) updateFriendsUI(d, { key: m.key, pending: true });
+      });
+    }).catch(err => console.warn('[Friends] initial load failed:', err));
   } catch (e) {
     console.warn('[Friends] Firebase init failed:', e);
     initLocalFriends();
@@ -2300,29 +2532,31 @@ function initLocalFriends() {
   if (statusEl) { statusEl.classList.add('local'); statusEl.querySelector('.fsb-status-text').textContent = 'Local only'; }
   document.getElementById('friends-setup-notice')?.removeAttribute('hidden');
 
-  // Load from localStorage
   let saved = [];
   try { saved = JSON.parse(localStorage.getItem(FRIENDS_LS_KEY) || '[]'); } catch (_) {}
-  (Array.isArray(saved) ? saved : []).map(sanitizeFriend).filter(Boolean).forEach(updateFriendsUI);
+  (Array.isArray(saved) ? saved : []).map(sanitizeFriend).filter(Boolean).forEach(d => updateFriendsUI(d));
 }
 
+// Returns 'pending' (sent for approval) or 'local' (saved on this device)
 async function submitFriendAsteroid(data) {
-  if (friendsDbRef) {
-    await friendsDbRef.push(data);
-    // Firebase child_added will fire and call updateFriendsUI automatically
-  } else {
-    // Local: update manually
-    const saved = JSON.parse(localStorage.getItem(FRIENDS_LS_KEY) || '[]');
-    saved.push(data);
-    localStorage.setItem(FRIENDS_LS_KEY, JSON.stringify(saved));
-    updateFriendsUI(data);
+  if (friendsRoot) {
+    const ref = friendsRoot.child('pending').push();
+    await ref.set(data);
+    saveMine([...loadMine(), { key: ref.key, data }]);
+    updateFriendsUI(data, { key: ref.key, pending: true, comet: true });
+    return 'pending';
   }
+  let saved = [];
+  try { saved = JSON.parse(localStorage.getItem(FRIENDS_LS_KEY) || '[]'); } catch (_) {}
+  saved.push(data);
+  try { localStorage.setItem(FRIENDS_LS_KEY, JSON.stringify(saved)); } catch (_) {}
+  updateFriendsUI(data, { comet: true });
+  return 'local';
 }
 
 // Start — load Firebase SDK dynamically if config present
 (function startFriendsLayer() {
   if (window.FIREBASE_CONFIG && window.FIREBASE_CONFIG.databaseURL) {
-    // Dynamically load Firebase compat SDK
     const s1 = document.createElement('script');
     s1.src = 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js';
     s1.onload = () => {
@@ -2372,14 +2606,17 @@ document.getElementById('add-self-form')?.addEventListener('submit', async e => 
   if (submitLoad) submitLoad.hidden = false;
 
   try {
-    await submitFriendAsteroid({ name, emoji, message, timestamp: Date.now() });
+    const outcome = await submitFriendAsteroid({ name: name.slice(0, 25), emoji: safeEmoji(emoji), message: message.slice(0, 60), timestamp: Date.now() });
     closeAddSelfModal();
-    localStorage.setItem(ADDED_SELF_KEY, '1');
+    try { localStorage.setItem(ADDED_SELF_KEY, '1'); } catch (_) {}
+    track('guestbook-submit');
 
     // Toast
     const toast = document.createElement('div');
     toast.className = 'friend-toast';
-    toast.textContent = `${emoji} ${name} joined the asteroid belt!`;
+    toast.textContent = outcome === 'pending'
+      ? `☄️ Launched! Your asteroid joins the belt for everyone once Mahir approves it.`
+      : `${emoji} ${name} joined the asteroid belt!`;
     document.body.appendChild(toast);
     setTimeout(() => toast.classList.add('visible'), 10);
     setTimeout(() => { toast.classList.remove('visible'); setTimeout(() => toast.remove(), 400); }, 3500);
@@ -2390,6 +2627,7 @@ document.getElementById('add-self-form')?.addEventListener('submit', async e => 
     document.querySelectorAll('.emoji-btn').forEach((b, i) => b.classList.toggle('selected', i === 0));
   } catch (err) {
     console.error('[Friends] submit failed:', err);
+    alert("Couldn't launch your asteroid right now — please try again in a moment.");
   } finally {
     if (submitBtn) submitBtn.disabled = false;
     if (submitText) submitText.hidden = false;
@@ -2426,11 +2664,11 @@ if (_friendsSecEl) {
   if (!card) return;
 
   async function fetchNow() {
+    if (document.hidden) return;
     try {
       const res = await fetch(workerUrl + '/spotify');
       if (!res.ok) { console.warn('[Spotify] Worker responded', res.status); return; }
       const d = await res.json();
-      console.log('[Spotify]', d);
       if (d.track) {
         const art = document.getElementById('sp-art');
         art.src = d.albumArt || '';
@@ -2559,6 +2797,7 @@ if (_friendsSecEl) {
 
   async function loadLandmarker() {
     setStatus('Loading model…');
+    track('gesture-mode');
     const vision = await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs');
     const fileset = await vision.FilesetResolver.forVisionTasks(
       'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm'
@@ -2825,9 +3064,13 @@ if (_friendsSecEl) {
   }
 
   const ripples = [];
-  function ripple(x, y) { ripples.push({ x, y, born: performance.now() }); }
-  // Ripples are drawn each frame on top of the reticle
-  (function ripFrame() {
+  let ripRunning = false;
+  function ripple(x, y) {
+    ripples.push({ x, y, born: performance.now() });
+    if (!ripRunning) { ripRunning = true; requestAnimationFrame(ripFrame); }
+  }
+  // Ripples are drawn each frame on top of the reticle (loop stops when idle)
+  function ripFrame() {
     if (ctx) {
       const now = performance.now();
       for (let i = ripples.length - 1; i >= 0; i--) {
@@ -2843,8 +3086,8 @@ if (_friendsSecEl) {
         ctx.restore();
       }
     }
-    requestAnimationFrame(ripFrame);
-  })();
+    if (ripples.length) requestAnimationFrame(ripFrame); else ripRunning = false;
+  }
 
   btn.addEventListener('click', () => { active ? stop() : start(); });
   addEventListener('keydown', e => {
